@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <rect width="1000" height="1000" fill="#222831" />
+
+  <g stroke="#393e46" stroke-width="1">
+    <line x1="0" y1="250" x2="1000" y2="250" />
+    <line x1="0" y1="500" x2="1000" y2="500" />
+    <line x1="0" y1="750" x2="1000" y2="750" />
+    <line x1="250" y1="0" x2="250" y2="1000" />
+    <line x1="500" y1="0" x2="500" y2="1000" />
+    <line x1="750" y1="0" x2="750" y2="1000" />
+  </g>
+
+  <text x="320" y="380" fill="#666" font-family="sans-serif" font-size="24">Tòa quản trị / Admin Bldg</text>
+  <text x="600" y="510" fill="#666" font-family="sans-serif" font-size="24">Trạm điện / Power Station</text>
+  <text x="450" y="760" fill="#666" font-family="sans-serif" font-size="24">Khu ngầm / Underground</text>
+  <text x="220" y="280" fill="#666" font-family="sans-serif" font-size="24">Trạm kiểm soát / Checkpoint</text>
+
+  <text x="20" y="980" fill="#888" font-family="sans-serif" font-size="18">Zero Dam mock basemap — project-owned placeholder</text>
+</svg>

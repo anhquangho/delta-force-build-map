@@ -1,0 +1,61 @@
+:root {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 400;
+  color-scheme: dark;
+  --panel: #101b1ff5;
+  --text: #dce7e5;
+  --muted: #94a8aa;
+  --line: #2a3b40;
+  --accent: #66c8ab;
+  color: var(--text);
+  background: #101a1d;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { margin: 0; width: 100%; height: 100%; }
+body { min-width: 320px; overflow: hidden; }
+button, input, select { font: inherit; }
+button { color: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+button:hover { color: #fff; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.muted { color: var(--muted); }
+.eyebrow { font-size: 9px; letter-spacing: 0.12em; color: var(--muted); }
+.icon-button { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border: 1px solid var(--line); background: transparent; font-size: 18px; line-height: 1; }
+.icon-button:hover { border-color: var(--accent); }
+
+.item-icon {
+  --item-tone: #75898e;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--item-tone) 65%, #0a1116);
+  background: linear-gradient(145deg, #1b292e, color-mix(in srgb, var(--item-tone) 16%, #0a1116));
+  color: var(--muted);
+  vertical-align: middle;
+}
+.item-icon img { display: block; width: 76%; height: 76%; object-fit: contain; }
+.item-icon[data-rarity='common'] { --item-tone: #bcc4c7; }
+.item-icon[data-rarity='uncommon'] { --item-tone: #63be87; }
+.item-icon[data-rarity='rare'] { --item-tone: #68a9df; }
+.item-icon[data-rarity='epic'] { --item-tone: #b38ade; }
+.item-icon[data-rarity='legendary'] { --item-tone: #e0b55d; }
+.item-icon[data-rarity='special'] { --item-tone: #de7d87; }
+.item-icon.is-selected {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px #66c8ab33, 0 0 14px #66c8ab66;
+}
+.item-map-marker { background: transparent; border: 0; }
+.item-map-marker:hover { filter: brightness(1.2); }
+.item-map-marker .item-icon { margin: auto; }
+.leaflet-container { background: #101a1d; font-family: inherit; }
+.leaflet-bar { border: 1px solid var(--line) !important; border-radius: 0; box-shadow: none; }
+.leaflet-bar a, .leaflet-bar a:hover { background: #101b1f; color: var(--text); border-color: var(--line); border-radius: 0 !important; }
+.leaflet-bar a.leaflet-disabled { background: #152226; color: #617273; }
+.leaflet-container .leaflet-control-attribution { background: #101b1fe8; color: var(--muted); font-size: 9px; }
+.leaflet-container .leaflet-control-attribution a { color: var(--accent); }
