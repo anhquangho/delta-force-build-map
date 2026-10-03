@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { mockDataset } from '../mockDataset'
 
 describe('mockDataset', () => {
-  it('contains the three required entities', () => {
+  it('contains the three existing entities and two sample keycards', () => {
     const slugs = new Set(mockDataset.entities.map((e) => e.slug))
-    expect(slugs).toEqual(new Set(['safe', 'server', 'computer-case']))
+    expect(slugs).toEqual(new Set([
+      'safe', 'server', 'computer-case',
+      'substation-tech-room-keycard', 'underground-vault-storage-keycard',
+    ]))
   })
 
   it('has 10-20 markers', () => {
@@ -12,10 +15,11 @@ describe('mockDataset', () => {
     expect(mockDataset.markers.length).toBeLessThanOrEqual(20)
   })
 
-  it('has at least one genuine alias per entity', () => {
-    for (const entity of mockDataset.entities) {
-      const count = mockDataset.aliases.filter((a) => a.entityId === entity.id).length
-      expect(count).toBeGreaterThan(0)
+  it('keeps genuine aliases optional and does not duplicate keycard canonical names', () => {
+    expect(mockDataset.aliases.length).toBeGreaterThan(0)
+    for (const slug of ['substation-tech-room-keycard', 'underground-vault-storage-keycard']) {
+      const entity = mockDataset.entities.find((entry) => entry.slug === slug)!
+      expect(mockDataset.aliases.filter((alias) => alias.entityId === entity.id)).toHaveLength(0)
     }
   })
 

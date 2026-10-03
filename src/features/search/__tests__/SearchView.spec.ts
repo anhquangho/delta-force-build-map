@@ -81,6 +81,7 @@ describe('SearchView', () => {
 
     expect(wrapper.find('.result strong').text()).toBe('Máy chủ')
     expect(wrapper.find('.result-english').text()).toBe('Server')
+    expect(wrapper.get('.result img').attributes('src')).toBe('/image/Serve.png')
     expect(wrapper.find('.result-count').text()).toContain('4')
     expect(wrapper.text()).toContain('Zero Dam')
   })

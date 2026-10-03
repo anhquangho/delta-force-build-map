@@ -44,6 +44,8 @@ export function validateDataset(dataset: PublicDataset): DatasetValidationError[
     }
 
     if (
+      !Number.isFinite(marker.xNormalized) ||
+      !Number.isFinite(marker.yNormalized) ||
       marker.xNormalized < 0 ||
       marker.xNormalized > 1 ||
       marker.yNormalized < 0 ||

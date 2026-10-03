@@ -15,8 +15,7 @@ export interface MapEntity {
   nameEn: string
   descriptionVi?: string
   descriptionEn?: string
-  icon?: string
-  rarity?: ItemRarity
+  catalogItemId?: string
 }
 
 export interface MapMarker {

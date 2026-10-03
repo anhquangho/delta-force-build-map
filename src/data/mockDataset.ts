@@ -7,6 +7,7 @@
  */
 
 import type { PublicDataset } from '@/types/dataset'
+import { ITEM_CATALOG_IDS } from './itemCatalog'
 
 const MAP_ID = '4cdcb007-ee4d-489a-8406-c908c2553f48'
 const MAP_VERSION_ID = '1bf10507-4425-417a-b514-8bb3dba45bd4'
@@ -23,12 +24,16 @@ const CATEGORY_IDS = {
   safe: '237d2127-17c0-4888-bf0f-036b32d57d39',
   server: '3f21470b-2df0-4341-b572-9fba5715267f',
   computerCase: '5ac27f60-3762-48d1-9b26-4f72068c2160',
+  access: '66e28e0f-f0a0-41d7-b7de-8eaa16732301',
+  keycard: 'c160ea2f-31bc-437e-8d64-fe8e2f52b3ea',
 } as const
 
 const ENTITY_IDS = {
   safe: 'faa8faac-6cb5-42d7-ad74-d9509f01002b',
   server: 'e4e00fcb-10b5-482e-9842-fac866dd4d8d',
   computerCase: '317d203d-aaae-434f-8c90-9ff8d813925f',
+  substationTechRoomKeycard: '9c7d4ebd-a389-4871-9863-53375127504e',
+  undergroundVaultStorageKeycard: 'c751c9b8-0901-41de-8a7d-b0588c230373',
 } as const
 
 export const mockDataset: PublicDataset = {
@@ -86,6 +91,12 @@ export const mockDataset: PublicDataset = {
       nameVi: 'Đồ vật',
     },
     {
+      id: CATEGORY_IDS.access,
+      slug: 'access',
+      nameEn: 'Access',
+      nameVi: 'Truy cập',
+    },
+    {
       id: CATEGORY_IDS.safe,
       slug: 'safe',
       nameEn: 'Safe',
@@ -106,6 +117,13 @@ export const mockDataset: PublicDataset = {
       nameVi: 'Thùng máy tính',
       parentId: CATEGORY_IDS.container,
     },
+    {
+      id: CATEGORY_IDS.keycard,
+      slug: 'keycard',
+      nameEn: 'Keycard',
+      nameVi: 'Thẻ khóa',
+      parentId: CATEGORY_IDS.access,
+    },
   ],
   entities: [
     {
@@ -114,7 +132,7 @@ export const mockDataset: PublicDataset = {
       categoryId: CATEGORY_IDS.safe,
       nameEn: 'Safe',
       nameVi: 'Két sắt',
-      icon: `${import.meta.env.BASE_URL}icons/safe.svg`,
+      catalogItemId: ITEM_CATALOG_IDS.safe,
     },
     {
       id: ENTITY_IDS.server,
@@ -122,7 +140,7 @@ export const mockDataset: PublicDataset = {
       categoryId: CATEGORY_IDS.server,
       nameEn: 'Server',
       nameVi: 'Máy chủ',
-      icon: `${import.meta.env.BASE_URL}icons/server.svg`,
+      catalogItemId: ITEM_CATALOG_IDS.server,
     },
     {
       id: ENTITY_IDS.computerCase,
@@ -130,7 +148,23 @@ export const mockDataset: PublicDataset = {
       categoryId: CATEGORY_IDS.computerCase,
       nameEn: 'Computer Case',
       nameVi: 'Thùng máy tính',
-      icon: `${import.meta.env.BASE_URL}icons/computer-case.svg`,
+      catalogItemId: ITEM_CATALOG_IDS.computerCase,
+    },
+    {
+      id: ENTITY_IDS.substationTechRoomKeycard,
+      slug: 'substation-tech-room-keycard',
+      categoryId: CATEGORY_IDS.keycard,
+      nameEn: 'Substation Tech Room Keycard',
+      nameVi: 'Thẻ khóa phòng kỹ thuật trạm điện',
+      catalogItemId: ITEM_CATALOG_IDS.substationTechRoomKeycard,
+    },
+    {
+      id: ENTITY_IDS.undergroundVaultStorageKeycard,
+      slug: 'underground-vault-storage-keycard',
+      categoryId: CATEGORY_IDS.keycard,
+      nameEn: 'Underground Vault Storage Keycard',
+      nameVi: 'Thẻ kho lưu trữ ngầm',
+      catalogItemId: ITEM_CATALOG_IDS.undergroundVaultStorageKeycard,
     },
   ],
   aliases: [
@@ -162,5 +196,7 @@ export const mockDataset: PublicDataset = {
     { id: '0211fc5e-6dc7-4990-bfef-15772f64b459', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.checkpoint, entityId: ENTITY_IDS.computerCase, xNormalized: 0.23, yNormalized: 0.31, floorKey: '1' },
     { id: '6663ddb4-f0a0-482a-bf9d-ec27bc3b06e9', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.adminBuilding, entityId: ENTITY_IDS.computerCase, xNormalized: 0.36, yNormalized: 0.43, floorKey: '2' },
     { id: '11e884e2-503d-4279-b311-0ae41dc5b45c', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.powerStation, entityId: ENTITY_IDS.computerCase, xNormalized: 0.63, yNormalized: 0.56, floorKey: '2' },
+    { id: '8bf3cf8e-e3d3-4c11-87b3-6f22ff87bf20', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.powerStation, entityId: ENTITY_IDS.substationTechRoomKeycard, xNormalized: 0.67, yNormalized: 0.58 },
+    { id: '08705d4d-387b-4d94-b574-3a8d7f66d7ef', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.underground, entityId: ENTITY_IDS.undergroundVaultStorageKeycard, xNormalized: 0.52, yNormalized: 0.82 },
   ],
 }
