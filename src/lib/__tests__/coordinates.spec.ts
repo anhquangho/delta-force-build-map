@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { zeroDamMapConfig } from '@/data/zeroDamMap'
-import { mapPointToNormalized, normalizedToLeafletSimplePoint, normalizedToMapPoint, sourceWorldToLeafletSimplePoint } from '../coordinates'
+import { clampNormalizedCoordinates, leafletSimplePointToNormalized, mapPointToNormalized, normalizedCoordinatesToMapPoint, normalizedToLeafletSimplePoint, normalizedToMapPoint, sourceWorldToLeafletSimplePoint } from '../coordinates'
 
 describe('coordinates', () => {
   it('maps normalized (0,0) to top-left of map-space', () => {
@@ -25,6 +25,16 @@ describe('coordinates', () => {
     expect(normalizedToLeafletSimplePoint(0, 0, zeroDamMapConfig)).toEqual({ lat: -64, lng: 0 })
     expect(normalizedToLeafletSimplePoint(1, 1, zeroDamMapConfig)).toEqual({ lat: -384, lng: 448 })
     expect(normalizedToLeafletSimplePoint(0.25, 0.75, zeroDamMapConfig)).toEqual({ lat: -304, lng: 112 })
+  })
+
+  it('round-trips Leaflet clicks to normalized top-down map coordinates', () => {
+    const point = normalizedToLeafletSimplePoint(0.25, 0.75, zeroDamMapConfig)
+    expect(leafletSimplePointToNormalized(point, zeroDamMapConfig)).toEqual({ xNormalized: 0.25, yNormalized: 0.75 })
+  })
+
+  it('preserves out-of-bounds map clicks for inspection and clamps only drag results', () => {
+    expect(normalizedCoordinatesToMapPoint({ xNormalized: -0.1, yNormalized: 1.1 }, 4096, 4096)).toEqual({ x: -409.6, y: 4505.6 })
+    expect(clampNormalizedCoordinates({ xNormalized: -0.2, yNormalized: 1.2 })).toEqual({ xNormalized: 0, yNormalized: 1 })
   })
 
   it('maps source-world control coordinates with the collected Zero Dam transform', () => {

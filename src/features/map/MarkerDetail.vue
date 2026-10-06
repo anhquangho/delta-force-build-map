@@ -4,6 +4,7 @@ import ItemIcon from '@/components/ItemIcon.vue'
 import type { MapEntity, MapMarker } from '@/types/domain'
 import type { ItemCatalogRecord } from '@/types/item-catalog'
 import { itemRarityLabels, type ItemPresentation } from '@/lib/item-presentation'
+import { markerVerificationLabel } from '@/lib/marker-verification'
 
 const props = defineProps<{
   entity: MapEntity
@@ -21,6 +22,7 @@ const nameVi = computed(() => props.catalogItem?.nameVi ?? props.entity.nameVi)
 const nameEn = computed(() => props.catalogItem?.nameEn ?? props.entity.nameEn)
 const description = computed(() => props.catalogItem?.descriptionVi ?? props.catalogItem?.descriptionEn ?? props.entity.descriptionVi ?? props.entity.descriptionEn)
 const rarityLabel = computed(() => props.presentation.rarity ? itemRarityLabels[props.presentation.rarity] : undefined)
+const verificationLabel = computed(() => markerVerificationLabel(props.marker))
 const detailRows = computed(() => [
   { label: 'Khu vực / Area', value: props.areaName },
   { label: 'Tầng / Floor', value: props.marker.floorKey ?? 'Chưa rõ / Unknown' },
@@ -84,7 +86,7 @@ const detailRows = computed(() => [
     </dl>
     <footer>
       {{ markerCount }} vị trí / locations
-      <span>Dữ liệu giả lập / Unverified mock data</span>
+      <span>{{ verificationLabel }}</span>
     </footer>
   </article>
 </template>

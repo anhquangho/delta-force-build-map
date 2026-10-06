@@ -43,6 +43,20 @@ export function validateDataset(dataset: PublicDataset): DatasetValidationError[
       })
     }
 
+    if (marker.verificationStatus === 'candidate' && !marker.provenance) {
+      errors.push({ type: 'marker', message: `Candidate marker ${marker.id} is missing source provenance` })
+    }
+
+    if (marker.provenance) {
+      const { provenance } = marker
+      if (!provenance.sourceName || !provenance.sourceKey || !provenance.sourceUrl || !provenance.sourceExternalId || marker.id === provenance.sourceExternalId) {
+        errors.push({ type: 'marker', message: `Marker ${marker.id} has incomplete or reused source identity` })
+      }
+      if (!Number.isFinite(provenance.sourceX) || !Number.isFinite(provenance.sourceY) || (provenance.sourceZ != null && !Number.isFinite(provenance.sourceZ))) {
+        errors.push({ type: 'marker', message: `Marker ${marker.id} has invalid source coordinates` })
+      }
+    }
+
     if (
       !Number.isFinite(marker.xNormalized) ||
       !Number.isFinite(marker.yNormalized) ||

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mockDataset } from '../mockDataset'
+import { mockDataset, serverMarkerCandidates } from '../mockDataset'
 
 describe('mockDataset', () => {
   it('contains the three existing entities and two sample keycards', () => {
@@ -13,6 +13,22 @@ describe('mockDataset', () => {
   it('has 10-20 markers', () => {
     expect(mockDataset.markers.length).toBeGreaterThanOrEqual(10)
     expect(mockDataset.markers.length).toBeLessThanOrEqual(20)
+  })
+
+  it('replaces only Server mocks and keeps other fixture counts unchanged', () => {
+    const count = (slug: string) => {
+      const entity = mockDataset.entities.find((entry) => entry.slug === slug)!
+      return mockDataset.markers.filter((marker) => marker.entityId === entity.id)
+    }
+    expect(count('server')).toEqual(serverMarkerCandidates)
+    expect(count('server')).toHaveLength(3)
+    expect(count('safe')).toHaveLength(5)
+    expect(count('computer-case')).toHaveLength(6)
+    expect(count('substation-tech-room-keycard')).toHaveLength(1)
+    expect(count('underground-vault-storage-keycard')).toHaveLength(1)
+    for (const slug of ['safe', 'computer-case', 'substation-tech-room-keycard', 'underground-vault-storage-keycard']) {
+      expect(count(slug).every((marker) => marker.verificationStatus === undefined && marker.provenance === undefined)).toBe(true)
+    }
   })
 
   it('keeps genuine aliases optional and does not duplicate keycard canonical names', () => {

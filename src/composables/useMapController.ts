@@ -5,8 +5,9 @@ import type { MapMarker } from '@/types/domain'
 import type { ItemPresentation } from '@/lib/item-presentation'
 import type { MarkerPoint } from '@/lib/marker-detail-placement'
 import type { LocalTileMapConfig, SimpleMapBounds } from '@/types/map-config'
-import { normalizedToLeafletSimplePoint, sourceWorldToLeafletSimplePoint } from '@/lib/coordinates'
+import { clampNormalizedCoordinates, leafletSimplePointToNormalized, normalizedToLeafletSimplePoint, sourceWorldToLeafletSimplePoint, type NormalizedMapCoordinates } from '@/lib/coordinates'
 import { isMapTileAvailable, minimumZoomForMapFit, nearestCoveredTileViewCenter, panBoundsForViewport } from '@/lib/map-tiles'
+import { markerVerificationLabel } from '@/lib/marker-verification'
 
 function toLeafletBounds(bounds: SimpleMapBounds): L.LatLngBoundsExpression {
   return [[bounds.south, bounds.west], [bounds.north, bounds.east]]
@@ -28,17 +29,21 @@ export interface MapControllerOptions {
 export interface MapMarkerRenderOptions extends ItemPresentation {
   entityNameVi: string
   entityNameEn: string
+  allowCandidateDragging?: boolean
   onMarkerClick?(marker: MapMarker): void
+  onMarkerDrag?(marker: MapMarker, coordinates: NormalizedMapCoordinates): void
 }
 
 export interface MapController {
   setMarkers(markers: MapMarker[], options: MapMarkerRenderOptions): void
+  setMarkerPosition(markerId: string, coordinates: NormalizedMapCoordinates): void
   clearMarkers(): void
   fitMarkers(): void
   resetView(): void
   selectMarker(markerId: string | null): void
   getMarkerPoint(markerId: string): MarkerPoint | null
   onMapClick(listener: () => void): () => void
+  onMapCoordinateClick(listener: (coordinates: NormalizedMapCoordinates) => void): () => void
   onViewportChange(listener: () => void): () => void
   resize(): void
   destroy(): void
@@ -216,8 +221,10 @@ export function useMapController(
     for (const marker of markers) {
       const point = normalizedToLeafletSimplePoint(marker.xNormalized, marker.yNormalized, mapConfig)
       const element = document.createElement('div')
-      const label = `${renderOptions.entityNameVi} / ${renderOptions.entityNameEn} · ${marker.floorKey ?? '?'} · Mock`
+      const label = `${renderOptions.entityNameVi} / ${renderOptions.entityNameEn} · ${marker.floorKey ?? '?'} · ${markerVerificationLabel(marker)}`
+      const draggable = !!renderOptions.allowCandidateDragging && marker.verificationStatus === 'candidate'
       const pin = L.marker([point.lat, point.lng], {
+        draggable,
         icon: L.divIcon({ html: element, className: 'item-map-marker', iconSize: [36, 36], iconAnchor: [18, 18] }),
         title: label,
         alt: label,
@@ -235,9 +242,24 @@ export function useMapController(
         selectMarker(marker.id)
         renderOptions.onMarkerClick?.(marker)
       })
+      if (draggable) {
+        pin.on('dragend', () => {
+          const coordinates = clampNormalizedCoordinates(leafletSimplePointToNormalized(pin.getLatLng(), mapConfig))
+          const position = normalizedToLeafletSimplePoint(coordinates.xNormalized, coordinates.yNormalized, mapConfig)
+          pin.setLatLng([position.lat, position.lng])
+          renderOptions.onMarkerDrag?.(marker, coordinates)
+        })
+      }
       entries.set(marker.id, { element, marker: pin })
     }
     selectMarker(null)
+  }
+
+  function setMarkerPosition(markerId: string, coordinates: NormalizedMapCoordinates) {
+    const entry = entries.get(markerId)
+    if (!entry) return
+    const point = normalizedToLeafletSimplePoint(coordinates.xNormalized, coordinates.yNormalized, mapConfig)
+    entry.marker.setLatLng([point.lat, point.lng])
   }
 
   function fitMarkers() {
@@ -261,6 +283,14 @@ export function useMapController(
     return () => map.off('click', listener)
   }
 
+  function onMapCoordinateClick(listener: (coordinates: NormalizedMapCoordinates) => void): () => void {
+    const handleClick = (event: L.LeafletMouseEvent) => {
+      listener(leafletSimplePointToNormalized(event.latlng, mapConfig))
+    }
+    map.on('click', handleClick)
+    return () => map.off('click', handleClick)
+  }
+
   function onViewportChange(listener: () => void): () => void {
     map.on('move zoom resize', listener)
     return () => map.off('move zoom resize', listener)
@@ -276,5 +306,5 @@ export function useMapController(
     map.remove()
   }
 
-  return { setMarkers, clearMarkers, fitMarkers, resetView, selectMarker, getMarkerPoint, onMapClick, onViewportChange, resize, destroy }
+  return { setMarkers, setMarkerPosition, clearMarkers, fitMarkers, resetView, selectMarker, getMarkerPoint, onMapClick, onMapCoordinateClick, onViewportChange, resize, destroy }
 }
