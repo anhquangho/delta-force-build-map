@@ -15,8 +15,10 @@ describe('searchEntities', () => {
     expect(resultSlugs('may chu')).toEqual(['server'])
   })
 
-  it('matches canonical English case-insensitively', () => {
-    expect(resultSlugs('server')).toEqual(['server'])
+  it('resolves all Server query forms to the same entity', () => {
+    for (const query of ['máy chủ', 'may chu', 'server', 'sv']) {
+      expect(resultSlugs(query)).toEqual(['server'])
+    }
     expect(resultSlugs('SERVER')).toEqual(['server'])
   })
 
@@ -76,7 +78,7 @@ describe('searchEntities', () => {
   it('includes marker count, category, and map in results', () => {
     const [result] = searchEntities(mockDataset, 'server')
     expect(result).toBeDefined()
-    expect(result.markerCount).toBe(4)
+    expect(result.markerCount).toBe(3)
     expect(result.category.slug).toBe('server')
     expect(result.map.slug).toBe('zero-dam')
   })

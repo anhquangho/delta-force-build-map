@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import L from 'leaflet'
 import { useMapController, type MapController } from '../useMapController'
-import { mockDataset } from '@/data/mockDataset'
+import { mockDataset, serverMarkerCandidates } from '@/data/mockDataset'
 import { zeroDamMapConfig } from '@/data/zeroDamMap'
 import { isMapTileAvailable } from '@/lib/map-tiles'
 import { normalizedToLeafletSimplePoint } from '@/lib/coordinates'
@@ -72,6 +72,42 @@ describe('Leaflet adapter', () => {
       maxNativeZoom: 3,
       noWrap: true,
     }))
+  })
+
+  it('only enables dragging for candidate markers when review mode is explicitly enabled', () => {
+    const markerFactory = vi.spyOn(L, 'marker')
+    const map = setup()
+    const candidate = serverMarkerCandidates[0]
+    const safe = mockDataset.markers.find((marker) => marker.entityId !== candidate.entityId)!
+    const onMarkerDrag = vi.fn()
+    map.setMarkers([candidate], options)
+    expect((markerFactory.mock.results[0].value as L.Marker).options.draggable).toBe(false)
+    map.setMarkers([candidate, safe], { ...options, allowCandidateDragging: true, onMarkerDrag })
+    const candidatePin = markerFactory.mock.results[1].value as L.Marker
+    const safePin = markerFactory.mock.results[2].value as L.Marker
+    expect(candidatePin.options.draggable).toBe(true)
+    expect(safePin.options.draggable).toBe(false)
+    const target = normalizedToLeafletSimplePoint(0.61, 0.42, zeroDamMapConfig)
+    candidatePin.setLatLng([target.lat, target.lng])
+    candidatePin.fire('dragend')
+    const [draggedMarker, coordinates] = onMarkerDrag.mock.calls[0]
+    expect(draggedMarker).toBe(candidate)
+    expect(coordinates.xNormalized).toBeCloseTo(0.61)
+    expect(coordinates.yNormalized).toBeCloseTo(0.42)
+    map.setMarkerPosition(candidate.id, { xNormalized: candidate.xNormalized, yNormalized: candidate.yNormalized })
+    expect(candidatePin.getLatLng().lat).toBeCloseTo(normalizedToLeafletSimplePoint(candidate.xNormalized, candidate.yNormalized, zeroDamMapConfig).lat)
+  })
+
+  it('projects map clicks through the centralized inverse coordinate transform', () => {
+    const mapFactory = vi.spyOn(L, 'map')
+    const controller = setup()
+    const leafletMap = mapFactory.mock.results[0].value as L.Map
+    const onCoordinateClick = vi.fn()
+    const remove = controller.onMapCoordinateClick(onCoordinateClick)
+    const point = normalizedToLeafletSimplePoint(0.25, 0.75, zeroDamMapConfig)
+    leafletMap.fire('click', { latlng: L.latLng(point.lat, point.lng) })
+    expect(onCoordinateClick).toHaveBeenCalledWith({ xNormalized: 0.25, yNormalized: 0.75 })
+    remove()
   })
 
   it('reuses z3 tiles above native max zoom without requesting higher levels', () => {
@@ -168,6 +204,7 @@ describe('Leaflet adapter', () => {
     expect(pins).toHaveLength(4)
     expect(pins[0].getAttribute('role')).toBe('button')
     expect(pins[0].getAttribute('aria-label')).toContain('Máy chủ / Server')
+    expect(pins[0].getAttribute('aria-label')).toContain('Unverified source candidate')
     pins[0].click()
     expect(onMarkerClick).toHaveBeenLastCalledWith(mockDataset.markers[0])
     expect(onMapClick).not.toHaveBeenCalled()

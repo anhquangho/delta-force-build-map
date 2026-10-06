@@ -1,6 +1,6 @@
-import type { ItemRarity } from './domain'
+import type { ItemRarity, VerificationStatus } from './domain'
 
-export type ItemVerificationStatus = 'candidate' | 'reviewed' | 'verified' | 'disputed' | 'stale'
+export type ItemVerificationStatus = VerificationStatus
 export type ItemCatalogCategory = 'container' | 'access-card'
 export type AssetReuseStatus = 'unconfirmed' | 'permitted' | 'not-approved'
 

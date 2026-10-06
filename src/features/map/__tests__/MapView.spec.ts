@@ -8,10 +8,11 @@ import MapView from '../MapView.vue'
 import { getItemPresentation } from '@/lib/item-presentation'
 
 const adapter = vi.hoisted(() => ({
-  setMarkers: vi.fn(), clearMarkers: vi.fn(), fitMarkers: vi.fn(), resetView: vi.fn(),
+  setMarkers: vi.fn(), setMarkerPosition: vi.fn(), clearMarkers: vi.fn(), fitMarkers: vi.fn(), resetView: vi.fn(),
   selectMarker: vi.fn(), resize: vi.fn(), destroy: vi.fn(),
   getMarkerPoint: vi.fn(() => ({ x: 400, y: 300 })),
   onMapClick: vi.fn((_listener: () => void) => vi.fn()),
+  onMapCoordinateClick: vi.fn((_listener: (coordinates: { xNormalized: number; yNormalized: number }) => void) => vi.fn()),
   onViewportChange: vi.fn((_listener: () => void) => vi.fn()),
 }))
 vi.mock('@/composables/useMapController', () => ({ useMapController: vi.fn(() => adapter) }))
@@ -22,6 +23,7 @@ let resizeCallback: () => void
 beforeEach(() => {
   adapter.getMarkerPoint.mockReturnValue({ x: 400, y: 300 })
   adapter.onMapClick.mockReturnValue(vi.fn())
+  adapter.onMapCoordinateClick.mockReturnValue(vi.fn())
   adapter.onViewportChange.mockReturnValue(vi.fn())
   vi.stubGlobal('ResizeObserver', class {
     constructor(callback: () => void) { resizeCallback = callback }
@@ -30,14 +32,19 @@ beforeEach(() => {
   })
 })
 const wrappers: ReturnType<typeof mount>[] = []
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
 afterEach(() => {
   wrappers.forEach((wrapper) => wrapper.unmount())
   wrappers.length = 0
+  if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard)
+  else Reflect.deleteProperty(navigator, 'clipboard')
+  window.history.replaceState({}, '', '/')
   vi.clearAllMocks()
   vi.unstubAllGlobals()
 })
 
-function setup() {
+function setup(search = '') {
+  window.history.replaceState({}, '', search || '/')
   const selection = createSearchSelection()
   const wrapper = mount(MapView, { props: { selection }, attachTo: document.body })
   wrappers.push(wrapper)
@@ -48,6 +55,7 @@ describe('map view lifecycle', () => {
   it('mounts a map container before selection with no markers', () => {
     const { wrapper } = setup()
     expect(wrapper.find('.map-container').exists()).toBe(true)
+    expect(wrapper.find('.dev-marker-review-panel').exists()).toBe(false)
     expect(adapter.clearMarkers).toHaveBeenCalled()
     expect(adapter.resetView).toHaveBeenCalledOnce()
     expect(adapter.setMarkers).not.toHaveBeenCalled()
@@ -117,11 +125,13 @@ describe('map view lifecycle', () => {
     const onMarkerClick = adapter.setMarkers.mock.lastCall?.[1].onMarkerClick
     onMarkerClick?.(mockDataset.markers[0])
     await nextTick()
-    expect(wrapper.get('.marker-detail').text()).toContain('Tòa quản trị / Admin Building')
+    expect(wrapper.get('.marker-detail').text()).toContain('Chưa rõ / Unknown')
+    expect(wrapper.get('.marker-detail').findAll('dd')[1].text()).toBe('1')
     onMarkerClick?.(mockDataset.markers[1])
     await nextTick()
     expect(wrapper.findAll('.marker-detail')).toHaveLength(1)
-    expect(wrapper.get('.marker-detail').text()).toContain('Trạm điện / Power Station')
+    expect(wrapper.get('.marker-detail').text()).toContain('Chưa rõ / Unknown')
+    expect(wrapper.get('.marker-detail').findAll('dd')[1].text()).toBe('Chưa rõ / Unknown')
   })
 
   it('closes detail after clicking away from the card', async () => {
@@ -213,9 +223,9 @@ describe('map view lifecycle', () => {
     expect(adapter.fitMarkers).toHaveBeenCalledTimes(2)
   })
 
-  it('renders mock detail and closes it without clearing the entity', async () => {
+  it('renders unverified source-candidate detail and closes it without clearing the entity', async () => {
     const { selection, wrapper } = setup()
-    const entity = mockDataset.entities[1]
+    const entity = mockDataset.entities.find((entry) => entry.slug === 'server')!
     selection.selectEntity(entity.id)
     await nextTick()
     adapter.setMarkers.mock.lastCall?.[1].onMarkerClick(mockDataset.markers[0])
@@ -223,16 +233,86 @@ describe('map view lifecycle', () => {
     const detail = wrapper.get('.marker-detail')
     expect(detail.text()).toContain('Máy chủ')
     expect(detail.text()).toContain('Server')
-    expect(detail.text()).toContain('Tòa quản trị / Admin Building')
+    expect(detail.text()).toContain('Chưa rõ / Unknown')
     expect(detail.text()).toContain('Zero Dam')
     expect(detail.text()).toContain('Máy chủ / Server')
     expect(detail.get('.detail-heading img').attributes('src')).toBe('/image/Serve.png')
-    expect(detail.text()).toContain('Unverified mock data')
+    expect(detail.text()).toContain('Unverified source candidate')
     expect(detail.findAll('dd')[1].text()).toBe('1')
     await detail.get('button').trigger('click')
     expect(wrapper.find('.marker-detail').exists()).toBe(false)
     expect(selection.selectedEntityId).toBe(entity.id)
     expect(adapter.selectMarker).toHaveBeenLastCalledWith(null)
+  })
+
+  it('keeps Safe markers identified as unverified mock fixtures', async () => {
+    const { selection, wrapper } = setup()
+    const entity = mockDataset.entities.find((entry) => entry.slug === 'safe')!
+    selection.selectEntity(entity.id)
+    await nextTick()
+    const marker = mockDataset.markers.find((entry) => entry.entityId === entity.id)!
+    adapter.setMarkers.mock.lastCall?.[1].onMarkerClick(marker)
+    await nextTick()
+    expect(wrapper.get('.marker-detail').text()).toContain('Unverified mock data')
+  })
+
+  it('inspects clicks and reviews a candidate without mutating the dataset', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const { selection, wrapper } = setup('?devReview=1')
+    const server = mockDataset.entities.find((entity) => entity.slug === 'server')!
+    selection.selectEntity(server.id)
+    await nextTick()
+
+    expect(wrapper.find('.dev-marker-review-panel').exists()).toBe(true)
+    const renderOptions = adapter.setMarkers.mock.lastCall?.[1]
+    expect(renderOptions?.allowCandidateDragging).toBe(true)
+    const coordinateClick = adapter.onMapCoordinateClick.mock.calls[0][0]
+    coordinateClick({ xNormalized: 0.25, yNormalized: 0.75 })
+    await nextTick()
+    expect(wrapper.get('.dev-marker-review-panel').text()).toContain('0.250000')
+    expect(wrapper.get('.dev-marker-review-panel').text()).toContain('0.750000')
+    expect(wrapper.get('.dev-marker-review-panel').text()).toContain('1024.00 / 3072.00')
+    await wrapper.findAll('.dev-marker-review-panel button')[0].trigger('click')
+    expect(JSON.parse(writeText.mock.calls[0][0])).toEqual({
+      xNormalized: 0.25,
+      yNormalized: 0.75,
+      projectX: 1024,
+      projectY: 3072,
+    })
+
+    const marker = mockDataset.markers.find((entry) => entry.verificationStatus === 'candidate')!
+    renderOptions?.onMarkerClick?.(marker)
+    await nextTick()
+    expect(wrapper.get('.dev-marker-review-panel').text()).toContain(marker.id)
+    expect(wrapper.get('.dev-marker-review-panel').text()).toContain(marker.provenance?.sourceExternalId)
+    expect(wrapper.get('.dev-marker-review-panel').text()).toContain('candidate')
+
+    const original = { xNormalized: marker.xNormalized, yNormalized: marker.yNormalized }
+    renderOptions?.onMarkerDrag?.(marker, { xNormalized: 0.61, yNormalized: 0.42 })
+    await nextTick()
+    expect(wrapper.get('.dev-marker-review-panel').text()).toContain('0.610000 / 0.420000')
+    expect(marker.xNormalized).toBe(original.xNormalized)
+    expect(marker.yNormalized).toBe(original.yNormalized)
+    expect(marker.provenance?.sourceX).toBe(2428)
+
+    const patchButton = wrapper.findAll('.dev-marker-review-panel button').find((button) => button.text() === 'Copy JSON Patch')!
+    await patchButton.trigger('click')
+    const patch = JSON.parse(writeText.mock.calls[1][0])
+    expect(patch).toEqual({
+      markerId: marker.id,
+      xNormalized: 0.61,
+      yNormalized: 0.42,
+      reviewStatus: 'human_reviewed',
+    })
+    expect(patch).not.toHaveProperty('verificationStatus')
+    expect(marker.verificationStatus).toBe('candidate')
+    expect(marker.provenance?.sourceX).toBe(2428)
+
+    const resetButton = wrapper.findAll('.dev-marker-review-panel button').find((button) => button.text() === 'Reset to Source')!
+    await resetButton.trigger('click')
+    expect(adapter.setMarkerPosition).toHaveBeenLastCalledWith(marker.id, original)
+    expect(wrapper.get('.dev-marker-review-panel').text()).toContain(`${original.xNormalized.toFixed(6)} / ${original.yNormalized.toFixed(6)}`)
   })
 
   it('destroys the adapter on unmount', () => {
