@@ -1,12 +1,13 @@
 /**
- * Local mock dataset for Zero Dam vertical-slice development.
+ * Local development dataset for Zero Dam search and map features.
  *
- * This is intentionally small, unreviewed placeholder data used only to build
- * search and map features. It will be replaced by a deterministic export from
- * the Supabase canonical dataset once the publication workflow is implemented.
+ * Safe, Computer Case, and Keycard locations remain mock fixtures. Server
+ * locations are source-backed candidates pending project review.
  */
 
+import type { MapMarker } from '@/types/domain'
 import type { PublicDataset } from '@/types/dataset'
+import { ITEM_CATALOG_IDS } from './itemCatalog'
 
 const MAP_ID = '4cdcb007-ee4d-489a-8406-c908c2553f48'
 const MAP_VERSION_ID = '1bf10507-4425-417a-b514-8bb3dba45bd4'
@@ -23,18 +24,86 @@ const CATEGORY_IDS = {
   safe: '237d2127-17c0-4888-bf0f-036b32d57d39',
   server: '3f21470b-2df0-4341-b572-9fba5715267f',
   computerCase: '5ac27f60-3762-48d1-9b26-4f72068c2160',
+  access: '66e28e0f-f0a0-41d7-b7de-8eaa16732301',
+  keycard: 'c160ea2f-31bc-437e-8d64-fe8e2f52b3ea',
 } as const
 
 const ENTITY_IDS = {
   safe: 'faa8faac-6cb5-42d7-ad74-d9509f01002b',
   server: 'e4e00fcb-10b5-482e-9842-fac866dd4d8d',
   computerCase: '317d203d-aaae-434f-8c90-9ff8d813925f',
+  substationTechRoomKeycard: '9c7d4ebd-a389-4871-9863-53375127504e',
+  undergroundVaultStorageKeycard: 'c751c9b8-0901-41de-8a7d-b0588c230373',
 } as const
+
+const serverSourceSnapshot = {
+  sourceName: 'deltaforce-maps.com',
+  sourceKey: 'server',
+  sourceUrl: 'https://deltaforce-maps.com/data/zero-dam/markers.json',
+  coordinateSpace: 'zero-dam-image-4096',
+  retrievedAt: '2026-10-04T10:25:38.955Z',
+  sourceUpdatedAt: '2025-10-14T15:40:14Z',
+  snapshotEtag: 'W/"b2c30572ad63168e1fcbc8a805f6a484"',
+  snapshotHash: 'sha256:bae201e2ead1ad729538348e6e3d33e3cfa4a1db8d0331ae4c5200410a1af0c',
+  reuseStatus: 'unconfirmed',
+} as const
+
+export const serverMarkerCandidates: MapMarker[] = [
+  {
+    id: '54193b79-d16f-48ee-949f-52dfcb6c305d',
+    mapVersionId: MAP_VERSION_ID,
+    entityId: ENTITY_IDS.server,
+    xNormalized: 2428 / 4096,
+    yNormalized: 1812 / 4096,
+    floorKey: '1',
+    verificationStatus: 'candidate',
+    provenance: {
+      ...serverSourceSnapshot,
+      sourceExternalId: '395',
+      sourceX: 2428,
+      sourceY: 1812,
+      sourceZ: 1,
+      sourceClaims: { validated: true, randomSpawn: false, difficulties: ['easy', 'normal', 'hard'] },
+    },
+  },
+  {
+    id: '03365292-2377-4a79-8821-a9910d79908b',
+    mapVersionId: MAP_VERSION_ID,
+    entityId: ENTITY_IDS.server,
+    xNormalized: 2197 / 4096,
+    yNormalized: 2735 / 4096,
+    verificationStatus: 'candidate',
+    provenance: {
+      ...serverSourceSnapshot,
+      sourceExternalId: '333',
+      sourceX: 2197,
+      sourceY: 2735,
+      sourceClaims: { validated: true, randomSpawn: false, difficulties: ['easy', 'normal', 'hard'] },
+    },
+  },
+  {
+    id: 'fe7752ce-1126-4aa3-bf4e-e47de26dc659',
+    mapVersionId: MAP_VERSION_ID,
+    entityId: ENTITY_IDS.server,
+    xNormalized: 2298 / 4096,
+    yNormalized: 2655 / 4096,
+    floorKey: '0',
+    verificationStatus: 'candidate',
+    provenance: {
+      ...serverSourceSnapshot,
+      sourceExternalId: '413',
+      sourceX: 2298,
+      sourceY: 2655,
+      sourceZ: 0,
+      sourceClaims: { validated: true, randomSpawn: false, difficulties: ['easy', 'normal', 'hard'] },
+    },
+  },
+]
 
 export const mockDataset: PublicDataset = {
   schemaVersion: '1',
-  datasetVersion: 'zero-dam-mock-2026-09-30',
-  generatedAt: '2026-09-30T00:00:00Z',
+  datasetVersion: 'zero-dam-server-candidates-2026-10-04',
+  generatedAt: serverSourceSnapshot.retrievedAt,
   map: {
     id: MAP_ID,
     slug: 'zero-dam',
@@ -86,6 +155,12 @@ export const mockDataset: PublicDataset = {
       nameVi: 'Đồ vật',
     },
     {
+      id: CATEGORY_IDS.access,
+      slug: 'access',
+      nameEn: 'Access',
+      nameVi: 'Truy cập',
+    },
+    {
       id: CATEGORY_IDS.safe,
       slug: 'safe',
       nameEn: 'Safe',
@@ -106,6 +181,13 @@ export const mockDataset: PublicDataset = {
       nameVi: 'Thùng máy tính',
       parentId: CATEGORY_IDS.container,
     },
+    {
+      id: CATEGORY_IDS.keycard,
+      slug: 'keycard',
+      nameEn: 'Keycard',
+      nameVi: 'Thẻ khóa',
+      parentId: CATEGORY_IDS.access,
+    },
   ],
   entities: [
     {
@@ -114,7 +196,7 @@ export const mockDataset: PublicDataset = {
       categoryId: CATEGORY_IDS.safe,
       nameEn: 'Safe',
       nameVi: 'Két sắt',
-      icon: `${import.meta.env.BASE_URL}icons/safe.svg`,
+      catalogItemId: ITEM_CATALOG_IDS.safe,
     },
     {
       id: ENTITY_IDS.server,
@@ -122,7 +204,7 @@ export const mockDataset: PublicDataset = {
       categoryId: CATEGORY_IDS.server,
       nameEn: 'Server',
       nameVi: 'Máy chủ',
-      icon: `${import.meta.env.BASE_URL}icons/server.svg`,
+      catalogItemId: ITEM_CATALOG_IDS.server,
     },
     {
       id: ENTITY_IDS.computerCase,
@@ -130,7 +212,23 @@ export const mockDataset: PublicDataset = {
       categoryId: CATEGORY_IDS.computerCase,
       nameEn: 'Computer Case',
       nameVi: 'Thùng máy tính',
-      icon: `${import.meta.env.BASE_URL}icons/computer-case.svg`,
+      catalogItemId: ITEM_CATALOG_IDS.computerCase,
+    },
+    {
+      id: ENTITY_IDS.substationTechRoomKeycard,
+      slug: 'substation-tech-room-keycard',
+      categoryId: CATEGORY_IDS.keycard,
+      nameEn: 'Substation Tech Room Keycard',
+      nameVi: 'Thẻ khóa phòng kỹ thuật trạm điện',
+      catalogItemId: ITEM_CATALOG_IDS.substationTechRoomKeycard,
+    },
+    {
+      id: ENTITY_IDS.undergroundVaultStorageKeycard,
+      slug: 'underground-vault-storage-keycard',
+      categoryId: CATEGORY_IDS.keycard,
+      nameEn: 'Underground Vault Storage Keycard',
+      nameVi: 'Thẻ kho lưu trữ ngầm',
+      catalogItemId: ITEM_CATALOG_IDS.undergroundVaultStorageKeycard,
     },
   ],
   aliases: [
@@ -144,11 +242,7 @@ export const mockDataset: PublicDataset = {
     { id: '4a836ad3-d7af-4f1c-a10c-396e2e2360ac', entityId: ENTITY_IDS.computerCase, locale: 'en', alias: 'pc case', normalizedAlias: 'pc case' },
   ],
   markers: [
-    // Server markers
-    { id: '343aa6f8-3571-4a70-81e5-81baee4b543a', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.adminBuilding, entityId: ENTITY_IDS.server, xNormalized: 0.35, yNormalized: 0.42, floorKey: '1' },
-    { id: '00501dec-0c9c-4df1-a57f-0fcc2df79556', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.powerStation, entityId: ENTITY_IDS.server, xNormalized: 0.62, yNormalized: 0.55, floorKey: '1' },
-    { id: '0898eb1f-1857-40e7-80a2-1908b78505ba', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.underground, entityId: ENTITY_IDS.server, xNormalized: 0.48, yNormalized: 0.78, floorKey: 'B1' },
-    { id: '8ea3d5ca-f2d0-4279-a07e-9244b853f27e', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.checkpoint, entityId: ENTITY_IDS.server, xNormalized: 0.22, yNormalized: 0.3, floorKey: '1' },
+    ...serverMarkerCandidates,
     // Safe markers
     { id: 'fe949d67-ea6a-4f92-860d-e4b07eff99d9', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.adminBuilding, entityId: ENTITY_IDS.safe, xNormalized: 0.33, yNormalized: 0.4, floorKey: '2' },
     { id: '05452cb2-14df-4d83-9272-a753fa2437ee', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.powerStation, entityId: ENTITY_IDS.safe, xNormalized: 0.6, yNormalized: 0.53, floorKey: '1' },
@@ -162,5 +256,7 @@ export const mockDataset: PublicDataset = {
     { id: '0211fc5e-6dc7-4990-bfef-15772f64b459', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.checkpoint, entityId: ENTITY_IDS.computerCase, xNormalized: 0.23, yNormalized: 0.31, floorKey: '1' },
     { id: '6663ddb4-f0a0-482a-bf9d-ec27bc3b06e9', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.adminBuilding, entityId: ENTITY_IDS.computerCase, xNormalized: 0.36, yNormalized: 0.43, floorKey: '2' },
     { id: '11e884e2-503d-4279-b311-0ae41dc5b45c', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.powerStation, entityId: ENTITY_IDS.computerCase, xNormalized: 0.63, yNormalized: 0.56, floorKey: '2' },
+    { id: '8bf3cf8e-e3d3-4c11-87b3-6f22ff87bf20', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.powerStation, entityId: ENTITY_IDS.substationTechRoomKeycard, xNormalized: 0.67, yNormalized: 0.58 },
+    { id: '08705d4d-387b-4d94-b574-3a8d7f66d7ef', mapVersionId: MAP_VERSION_ID, areaId: AREA_IDS.underground, entityId: ENTITY_IDS.undergroundVaultStorageKeycard, xNormalized: 0.52, yNormalized: 0.82 },
   ],
 }

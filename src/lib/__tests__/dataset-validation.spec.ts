@@ -28,11 +28,14 @@ describe('validateDataset', () => {
     expect(errors.some((e) => e.type === 'marker' && e.message.includes('mapVersionId'))).toBe(true)
   })
 
-  it('detects coordinates outside the 0..1 range', () => {
-    const bad = structuredClone(mockDataset)
-    bad.markers[0].xNormalized = 1.5
-    const errors = validateDataset(bad)
-    expect(errors.some((e) => e.type === 'marker' && e.message.includes('coordinates'))).toBe(true)
+  it('detects coordinates outside the 0..1 range or not finite', () => {
+    const outOfRange = structuredClone(mockDataset)
+    outOfRange.markers[0].xNormalized = 1.5
+    expect(validateDataset(outOfRange).some((e) => e.type === 'marker' && e.message.includes('coordinates'))).toBe(true)
+
+    const notFinite = structuredClone(mockDataset)
+    notFinite.markers[0].yNormalized = Number.NaN
+    expect(validateDataset(notFinite).some((e) => e.type === 'marker' && e.message.includes('coordinates'))).toBe(true)
   })
 
   it('detects an alias referencing an unknown entity', () => {

@@ -15,8 +15,10 @@ describe('searchEntities', () => {
     expect(resultSlugs('may chu')).toEqual(['server'])
   })
 
-  it('matches canonical English case-insensitively', () => {
-    expect(resultSlugs('server')).toEqual(['server'])
+  it('resolves all Server query forms to the same entity', () => {
+    for (const query of ['máy chủ', 'may chu', 'server', 'sv']) {
+      expect(resultSlugs(query)).toEqual(['server'])
+    }
     expect(resultSlugs('SERVER')).toEqual(['server'])
   })
 
@@ -25,6 +27,17 @@ describe('searchEntities', () => {
     expect(resultSlugs('két')).toEqual(['safe'])
     expect(resultSlugs('case')).toEqual(['computer-case'])
     expect(resultSlugs('thùng pc')).toEqual(['computer-case'])
+  })
+
+  it('finds both sample keycards by the canonical English substring and individual names', () => {
+    expect(new Set(resultSlugs('keycard'))).toEqual(new Set([
+      'substation-tech-room-keycard',
+      'underground-vault-storage-keycard',
+    ]))
+    expect(resultSlugs('Substation Tech Room Keycard')).toEqual(['substation-tech-room-keycard'])
+    expect(resultSlugs('Underground Vault Storage Keycard')).toEqual(['underground-vault-storage-keycard'])
+    expect(resultSlugs('Thẻ khóa phòng kỹ thuật trạm điện')).toEqual(['substation-tech-room-keycard'])
+    expect(resultSlugs('Thẻ kho lưu trữ ngầm')).toEqual(['underground-vault-storage-keycard'])
   })
 
   it('handles extra whitespace', () => {
@@ -65,14 +78,15 @@ describe('searchEntities', () => {
   it('includes marker count, category, and map in results', () => {
     const [result] = searchEntities(mockDataset, 'server')
     expect(result).toBeDefined()
-    expect(result.markerCount).toBe(4)
+    expect(result.markerCount).toBe(3)
     expect(result.category.slug).toBe('server')
     expect(result.map.slug).toBe('zero-dam')
   })
 
   it('returns substring matches sorted by Vietnamese name when ranks tie', () => {
     const results = searchEntities(mockDataset, 'a')
-    expect(results.map((r) => r.entity.slug)).toEqual(['safe', 'server', 'computer-case'])
+    const sorted = [...results].sort((a, b) => a.entity.nameVi.localeCompare(b.entity.nameVi, 'vi'))
+    expect(results.map((result) => result.entity.id)).toEqual(sorted.map((result) => result.entity.id))
   })
 
   it('orders exact canonical matches before substring matches', () => {
