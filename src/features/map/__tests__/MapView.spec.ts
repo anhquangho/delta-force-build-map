@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createSearchSelection } from '@/composables/useSearchSelection'
 import { mockDataset } from '@/data/mockDataset'
+import { deltaForceMapsZeroDamCalibrationRecords } from '@/data/deltaForceMapsZeroDamCalibration'
 import { itemCatalog, ITEM_CATALOG_IDS } from '@/data/itemCatalog'
+import { provisionalSourcePreviewCoordinates } from '@/lib/marker-calibration'
 import MapView from '../MapView.vue'
 import { getItemPresentation } from '@/lib/item-presentation'
 
 const adapter = vi.hoisted(() => ({
-  setMarkers: vi.fn(), setMarkerPosition: vi.fn(), clearMarkers: vi.fn(), fitMarkers: vi.fn(), resetView: vi.fn(),
+  setMarkers: vi.fn(), setDevelopmentCalibrationMarker: vi.fn(), setMarkerPosition: vi.fn(), clearMarkers: vi.fn(), fitMarkers: vi.fn(), resetView: vi.fn(),
   selectMarker: vi.fn(), resize: vi.fn(), destroy: vi.fn(),
   getMarkerPoint: vi.fn(() => ({ x: 400, y: 300 })),
   onMapClick: vi.fn((_listener: () => void) => vi.fn()),
@@ -56,6 +58,8 @@ describe('map view lifecycle', () => {
     const { wrapper } = setup()
     expect(wrapper.find('.map-container').exists()).toBe(true)
     expect(wrapper.find('.dev-marker-review-panel').exists()).toBe(false)
+    expect(wrapper.find('#calibration-source-select').exists()).toBe(false)
+    expect(wrapper.find('.dev-marker-review-toggle').exists()).toBe(false)
     expect(adapter.clearMarkers).toHaveBeenCalled()
     expect(adapter.resetView).toHaveBeenCalledOnce()
     expect(adapter.setMarkers).not.toHaveBeenCalled()
@@ -273,7 +277,7 @@ describe('map view lifecycle', () => {
     expect(wrapper.get('.dev-marker-review-panel').text()).toContain('0.250000')
     expect(wrapper.get('.dev-marker-review-panel').text()).toContain('0.750000')
     expect(wrapper.get('.dev-marker-review-panel').text()).toContain('1024.00 / 3072.00')
-    await wrapper.findAll('.dev-marker-review-panel button')[0].trigger('click')
+    await wrapper.findAll('.dev-marker-review-panel button').find((button) => button.text() === 'Copy coordinates')!.trigger('click')
     expect(JSON.parse(writeText.mock.calls[0][0])).toEqual({
       xNormalized: 0.25,
       yNormalized: 0.75,
@@ -313,6 +317,55 @@ describe('map view lifecycle', () => {
     await resetButton.trigger('click')
     expect(adapter.setMarkerPosition).toHaveBeenLastCalledWith(marker.id, original)
     expect(wrapper.get('.dev-marker-review-panel').text()).toContain(`${original.xNormalized.toFixed(6)} / ${original.yNormalized.toFixed(6)}`)
+  })
+
+  it('reviews temporary source calibration points without mutating dataset markers', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const server = mockDataset.markers.find((marker) => marker.provenance?.sourceExternalId === '395')!
+    const original = { xNormalized: server.xNormalized, yNormalized: server.yNormalized }
+    const { wrapper } = setup('?devReview=1')
+    await flushPromises()
+    const record = deltaForceMapsZeroDamCalibrationRecords.find((candidate) => candidate.sourceExternalId === '165')!
+
+    await wrapper.get('#calibration-source-select').setValue(record.sourceExternalId)
+    await nextTick()
+    expect(wrapper.get('.review-calibration-tools').text()).toContain('Substation Tech Room')
+    expect(adapter.setDevelopmentCalibrationMarker).toHaveBeenLastCalledWith(expect.objectContaining({
+      ...provisionalSourcePreviewCoordinates(record),
+      title: expect.stringContaining('165'),
+      onDrag: expect.any(Function),
+    }))
+
+    await wrapper.findAll('.dev-marker-review-panel button').find((button) => button.text() === 'Hide panel')!.trigger('click')
+    expect(wrapper.find('.dev-marker-review-panel').exists()).toBe(false)
+    expect(wrapper.find('.dev-marker-review-toggle').exists()).toBe(true)
+    expect(adapter.setDevelopmentCalibrationMarker).toHaveBeenLastCalledWith(expect.objectContaining({
+      ...provisionalSourcePreviewCoordinates(record),
+      onDrag: expect.any(Function),
+    }))
+    adapter.setDevelopmentCalibrationMarker.mock.lastCall?.[0].onDrag({ xNormalized: 0.6123, yNormalized: 0.3341 })
+    await nextTick()
+    await wrapper.get('.dev-marker-review-toggle').trigger('click')
+    expect(wrapper.get('.review-calibration-tools').text()).toContain('0.612300 / 0.334100')
+    await wrapper.findAll('.review-calibration-tools button').find((button) => button.text() === 'Copy calibration correspondence')!.trigger('click')
+    expect(JSON.parse(writeText.mock.calls[0][0])).toEqual({
+      sourceExternalId: '165',
+      sourceX: 2455,
+      sourceY: 1784,
+      sourceZ: 1,
+      xNormalized: 0.6123,
+      yNormalized: 0.3341,
+      calibrationRole: 'fit',
+    })
+    expect(server.xNormalized).toBe(original.xNormalized)
+    expect(server.yNormalized).toBe(original.yNormalized)
+    expect(server.verificationStatus).toBe('candidate')
+
+    await wrapper.findAll('.review-calibration-tools button').find((button) => button.text() === 'Reset to source preview')!.trigger('click')
+    expect(adapter.setDevelopmentCalibrationMarker).toHaveBeenLastCalledWith(expect.objectContaining(provisionalSourcePreviewCoordinates(record)))
+    await wrapper.findAll('.review-calibration-tools button').find((button) => button.text() === 'Clear calibration point')!.trigger('click')
+    expect(adapter.setDevelopmentCalibrationMarker).toHaveBeenLastCalledWith(null)
   })
 
   it('destroys the adapter on unmount', () => {

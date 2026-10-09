@@ -70,3 +70,5 @@ button:hover { color: #fff; }
 .development-control-point-symbol::before { left: 50%; top: -5px; bottom: -5px; width: 1px; transform: translateX(-50%); }
 .development-control-point-symbol::after { top: 50%; left: -5px; right: -5px; height: 1px; transform: translateY(-50%); }
 .development-control-point-label { position: absolute; z-index: 1; left: 20px; top: -3px; padding: 2px 5px; color: #fff4cb; background: #111a20e8; border-left: 1px solid #ffe08a; font-size: 10px; white-space: nowrap; text-shadow: 0 1px 2px #000; }
+.development-calibration-marker-icon { border: 0; background: transparent; }
+.development-calibration-marker { display: grid; place-items: center; width: 40px; height: 40px; border: 2px solid #ff785e; border-radius: 50%; color: #fff; background: #341a19ed; box-shadow: 0 0 0 3px #ff785e55, 0 2px 8px #000b; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; text-shadow: 0 1px 2px #000; }

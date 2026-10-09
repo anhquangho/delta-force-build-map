@@ -98,6 +98,40 @@ describe('Leaflet adapter', () => {
     expect(candidatePin.getLatLng().lat).toBeCloseTo(normalizedToLeafletSimplePoint(candidate.xNormalized, candidate.yNormalized, zeroDamMapConfig).lat)
   })
 
+  it('keeps the draggable temporary calibration pin separate from project marker data', () => {
+    const mapFactory = vi.spyOn(L, 'map')
+    const markerFactory = vi.spyOn(L, 'marker')
+    const map = setup()
+    const candidate = serverMarkerCandidates[0]
+    const original = { xNormalized: candidate.xNormalized, yNormalized: candidate.yNormalized }
+    const onDrag = vi.fn()
+    map.setMarkers([candidate], options)
+    map.setDevelopmentCalibrationMarker({
+      xNormalized: 2455 / 4096,
+      yNormalized: 1784 / 4096,
+      title: 'Calibration source 165',
+      onDrag,
+    })
+
+    expect(container.querySelectorAll('.item-map-marker')).toHaveLength(1)
+    expect(container.querySelectorAll('.development-calibration-marker')).toHaveLength(1)
+    const calibrationPin = markerFactory.mock.results[markerFactory.mock.results.length - 1].value as L.Marker
+    expect(calibrationPin.options.draggable).toBe(true)
+    expect(calibrationPin.options.pane).toBe('development-calibration-markers')
+    const leafletMap = mapFactory.mock.results[0].value as L.Map
+    expect(leafletMap.getPane('development-calibration-markers')?.style.zIndex).toBe('700')
+    const target = normalizedToLeafletSimplePoint(0.6123, 0.3341, zeroDamMapConfig)
+    calibrationPin.setLatLng([target.lat, target.lng])
+    calibrationPin.fire('dragend')
+    expect(onDrag).toHaveBeenCalledWith({ xNormalized: expect.closeTo(0.6123), yNormalized: expect.closeTo(0.3341) })
+    expect(candidate.xNormalized).toBe(original.xNormalized)
+    expect(candidate.yNormalized).toBe(original.yNormalized)
+
+    map.setDevelopmentCalibrationMarker(null)
+    expect(container.querySelectorAll('.development-calibration-marker')).toHaveLength(0)
+    expect(container.querySelectorAll('.item-map-marker')).toHaveLength(1)
+  })
+
   it('projects map clicks through the centralized inverse coordinate transform', () => {
     const mapFactory = vi.spyOn(L, 'map')
     const controller = setup()
