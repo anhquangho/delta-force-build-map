@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { mapPointToNormalized, normalizedToMapPoint } from '../coordinates'
+import { zeroDamMapConfig } from '@/data/zeroDamMap'
+import { clampNormalizedCoordinates, leafletSimplePointToNormalized, mapPointToNormalized, normalizedCoordinatesToMapPoint, normalizedToLeafletSimplePoint, normalizedToMapPoint, sourceWorldToLeafletSimplePoint } from '../coordinates'
 
 describe('coordinates', () => {
   it('maps normalized (0,0) to top-left of map-space', () => {
@@ -19,4 +20,36 @@ describe('coordinates', () => {
     const point = normalizedToMapPoint(original.x, original.y, 4096, 4096)
     expect(mapPointToNormalized(point, 4096, 4096)).toEqual(original)
   })
+
+  it('converts top-down normalized coordinates to the configured CRS.Simple bounds', () => {
+    expect(normalizedToLeafletSimplePoint(0, 0, zeroDamMapConfig)).toEqual({ lat: -64, lng: 0 })
+    expect(normalizedToLeafletSimplePoint(1, 1, zeroDamMapConfig)).toEqual({ lat: -384, lng: 448 })
+    expect(normalizedToLeafletSimplePoint(0.25, 0.75, zeroDamMapConfig)).toEqual({ lat: -304, lng: 112 })
+  })
+
+  it('round-trips Leaflet clicks to normalized top-down map coordinates', () => {
+    const point = normalizedToLeafletSimplePoint(0.25, 0.75, zeroDamMapConfig)
+    expect(leafletSimplePointToNormalized(point, zeroDamMapConfig)).toEqual({ xNormalized: 0.25, yNormalized: 0.75 })
+  })
+
+  it('preserves out-of-bounds map clicks for inspection and clamps only drag results', () => {
+    expect(normalizedCoordinatesToMapPoint({ xNormalized: -0.1, yNormalized: 1.1 }, 4096, 4096)).toEqual({ x: -409.6, y: 4505.6 })
+    expect(clampNormalizedCoordinates({ xNormalized: -0.2, yNormalized: 1.2 })).toEqual({ xNormalized: 0, yNormalized: 1 })
+  })
+
+  it('maps source-world control coordinates with the collected Zero Dam transform', () => {
+    const source = zeroDamMapConfig.sourceTransform
+    expect(sourceWorldToLeafletSimplePoint(source.centerX, -source.centerY, source)).toEqual({ lat: -128, lng: 128 })
+    const adminArea = zeroDamMapConfig.developmentControlPoints.find((point) => point.id === 'administrative-area')!
+    const point = sourceWorldToLeafletSimplePoint(adminArea.sourceX, adminArea.sourceY, source)
+    expect(point.lng).toBeCloseTo(138.17, 1)
+    expect(point.lat).toBeCloseTo(-68.58, 1)
+  })
+
+  it.each([[-0.01, 0.5], [0.5, 1.01], [Number.NaN, 0.5], [0.5, Number.POSITIVE_INFINITY]])(
+    'rejects invalid normalized point (%s, %s)',
+    (x, y) => {
+      expect(() => normalizedToLeafletSimplePoint(x, y, zeroDamMapConfig)).toThrow(RangeError)
+    },
+  )
 })

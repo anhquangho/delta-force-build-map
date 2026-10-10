@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mockDataset } from '@/data/mockDataset'
 import { searchEntities } from '../search-ranking'
+import { zeroDamSourceToLocal } from '../zero-dam-source-to-local'
 
 function resultSlugs(query: string): string[] {
   return searchEntities(mockDataset, query).map((r) => r.entity.slug)
@@ -15,8 +16,10 @@ describe('searchEntities', () => {
     expect(resultSlugs('may chu')).toEqual(['server'])
   })
 
-  it('matches canonical English case-insensitively', () => {
-    expect(resultSlugs('server')).toEqual(['server'])
+  it('resolves all Server query forms to the same entity', () => {
+    for (const query of ['máy chủ', 'may chu', 'server', 'sv']) {
+      expect(resultSlugs(query)).toEqual(['server'])
+    }
     expect(resultSlugs('SERVER')).toEqual(['server'])
   })
 
@@ -25,6 +28,17 @@ describe('searchEntities', () => {
     expect(resultSlugs('két')).toEqual(['safe'])
     expect(resultSlugs('case')).toEqual(['computer-case'])
     expect(resultSlugs('thùng pc')).toEqual(['computer-case'])
+  })
+
+  it('finds both sample keycards by the canonical English substring and individual names', () => {
+    expect(new Set(resultSlugs('keycard'))).toEqual(new Set([
+      'substation-tech-room-keycard',
+      'underground-vault-storage-keycard',
+    ]))
+    expect(resultSlugs('Substation Tech Room Keycard')).toEqual(['substation-tech-room-keycard'])
+    expect(resultSlugs('Underground Vault Storage Keycard')).toEqual(['underground-vault-storage-keycard'])
+    expect(resultSlugs('Thẻ khóa phòng kỹ thuật trạm điện')).toEqual(['substation-tech-room-keycard'])
+    expect(resultSlugs('Thẻ kho lưu trữ ngầm')).toEqual(['underground-vault-storage-keycard'])
   })
 
   it('handles extra whitespace', () => {
@@ -65,14 +79,44 @@ describe('searchEntities', () => {
   it('includes marker count, category, and map in results', () => {
     const [result] = searchEntities(mockDataset, 'server')
     expect(result).toBeDefined()
-    expect(result.markerCount).toBe(4)
+    expect(result.markerCount).toBe(3)
     expect(result.category.slug).toBe('server')
     expect(result.map.slug).toBe('zero-dam')
   })
 
+  it('counts only in-crop markers while preserving local mock marker counts', () => {
+    const data = structuredClone(mockDataset)
+    const serverMarker = data.markers.find((marker) => marker.provenance?.sourceExternalId === '395')!
+    const outOfCropSourceX = 4000
+    const projection = zeroDamSourceToLocal(outOfCropSourceX, serverMarker.provenance!.sourceY)
+    serverMarker.provenance!.sourceX = outOfCropSourceX
+    serverMarker.xNormalized = projection.xNormalized
+    serverMarker.yNormalized = projection.yNormalized
+    serverMarker.withinLocalCrop = projection.withinLocalCrop
+
+    expect(searchEntities(data, 'server')[0].markerCount).toBe(2)
+    expect(searchEntities(mockDataset, 'safe')[0].markerCount).toBe(11)
+    expect(searchEntities(mockDataset, 'két sắt')[0].markerCount).toBe(11)
+    expect(searchEntities(mockDataset, 'computer case')[0].markerCount).toBe(9)
+    expect(searchEntities(mockDataset, 'keycard').map((result) => result.markerCount)).toEqual([1, 1])
+  })
+
+  it('keeps keycard room POIs distinct from inventory Keycard items', () => {
+    const roomResults = searchEntities(mockDataset, 'Substation Tech Room')
+    expect(roomResults.map((result) => result.entity.slug)).toEqual(['substation-tech-room'])
+    expect(roomResults[0].markerCount).toBe(1)
+    expect(roomResults[0].category.slug).toBe('keycard-location')
+    expect(searchEntities(mockDataset, 'Substation Tech Room Keycard').map((result) => result.entity.slug)).toEqual(['substation-tech-room-keycard'])
+    expect(new Set(searchEntities(mockDataset, 'keycard').map((result) => result.entity.slug))).toEqual(new Set([
+      'substation-tech-room-keycard',
+      'underground-vault-storage-keycard',
+    ]))
+  })
+
   it('returns substring matches sorted by Vietnamese name when ranks tie', () => {
     const results = searchEntities(mockDataset, 'a')
-    expect(results.map((r) => r.entity.slug)).toEqual(['safe', 'server', 'computer-case'])
+    const sorted = [...results].sort((a, b) => a.entity.nameVi.localeCompare(b.entity.nameVi, 'vi'))
+    expect(results.map((result) => result.entity.id)).toEqual(sorted.map((result) => result.entity.id))
   })
 
   it('orders exact canonical matches before substring matches', () => {

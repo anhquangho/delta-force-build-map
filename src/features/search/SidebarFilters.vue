@@ -3,6 +3,7 @@ import { mockDataset } from '@/data/mockDataset'
 import type { SearchSelection } from '@/composables/useSearchSelection'
 import ItemIcon from '@/components/ItemIcon.vue'
 import { getItemPresentation } from '@/lib/item-presentation'
+import { isMarkerVisibleInLocalMap } from '@/lib/marker-visibility'
 
 defineProps<{ selection: SearchSelection }>()
 defineEmits<{ selected: [] }>()
@@ -58,7 +59,7 @@ const categories = mockDataset.categories.filter((category) => category.parentId
             :selected="selection.selectedEntityId === entity.id"
           />
           <span>{{ category.nameVi }}<small>{{ category.nameEn }}</small></span>
-          <span class="category-count">{{ mockDataset.markers.filter((marker) => marker.entityId === entity.id).length }}</span>
+          <span class="category-count">{{ mockDataset.markers.filter((marker) => marker.entityId === entity.id && isMarkerVisibleInLocalMap(marker)).length }}</span>
         </button>
       </div>
     </section>

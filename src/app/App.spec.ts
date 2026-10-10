@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import App from '@/App.vue'
 import MapView from '@/features/map/MapView.vue'
 import { mockDataset } from '@/data/mockDataset'
+import { itemCatalog, ITEM_CATALOG_IDS } from '@/data/itemCatalog'
 
 vi.mock('@/features/map/MapView.vue', () => ({
   default: { props: ['selection', 'focusRequest'], template: '<div class="map-stub" />' },
@@ -68,11 +69,58 @@ describe('map/sidebar shell', () => {
     expect(selectedCategory?.text()).toContain('Server')
   })
 
+  it.each([
+    ['Thẻ khóa phòng kỹ thuật trạm điện', 'substation-tech-room-keycard', 'Substation Tech Room Keycard'],
+    ['Thẻ kho lưu trữ ngầm', 'underground-vault-storage-keycard', 'Underground Vault Storage Keycard'],
+  ])('selects the keycard search result for %s and requests map focus', async (query, slug, nameEn) => {
+    const wrapper = setup()
+    await wrapper.get('input').setValue(query)
+    const result = wrapper.findAll('.result').find((option) => option.find('.result-english').text() === nameEn)
+    expect(result).toBeDefined()
+    await result!.trigger('click')
+    const entity = mockDataset.entities.find((entry) => entry.slug === slug)
+    const map = wrapper.findComponent(MapView)
+    expect(map.props('selection').selectedEntityId).toBe(entity?.id)
+    expect(map.props('focusRequest')).toBe(1)
+  })
+
+  it('propagates known catalog rarity into search and sidebar icons', async () => {
+    const item = itemCatalog.find((entry) => entry.id === ITEM_CATALOG_IDS.server)!
+    const previousRarity = item.rarity
+    item.rarity = 'rare'
+    try {
+      const wrapper = setup()
+      await wrapper.get('input').setValue('server')
+      expect(wrapper.get('.result .item-icon').attributes('data-rarity')).toBe('rare')
+      expect(wrapper.get('.result .item-icon').classes()).toContain('rarity-rare')
+      const category = wrapper.findAll('.category-button').find((button) => button.text().includes('Server'))
+      expect(category?.get('.item-icon').attributes('data-rarity')).toBe('rare')
+      expect(category?.get('.item-icon').classes()).toContain('rarity-rare')
+    } finally {
+      item.rarity = previousRarity
+    }
+  })
+
+  it('shows the keycard category and activates each sample from the sidebar', async () => {
+    const wrapper = setup()
+    const keycardButtons = wrapper.findAll('.category-button').filter((button) => button.text().includes('Keycard'))
+    expect(keycardButtons).toHaveLength(2)
+    for (const button of keycardButtons) {
+      await button.trigger('click')
+      const selected = mockDataset.entities.find((entity) => entity.id === wrapper.findComponent(MapView).props('selection').selectedEntityId)
+      expect(selected?.slug).toMatch(/keycard$/)
+      expect(wrapper.findComponent(MapView).props('focusRequest')).toBeTruthy()
+    }
+  })
+
   it('shows only existing map/category choices with difficulty disabled', () => {
     const wrapper = setup()
     expect(wrapper.findAll('#map-select option')).toHaveLength(1)
     expect(wrapper.get('#difficulty-select').attributes('disabled')).toBeDefined()
-    expect(wrapper.findAll('.category-button')).toHaveLength(mockDataset.entities.length)
+    const categoryShortcutEntities = mockDataset.entities.filter((entity) =>
+      mockDataset.categories.some((category) => category.id === entity.categoryId && category.parentId),
+    )
+    expect(wrapper.findAll('.category-button')).toHaveLength(categoryShortcutEntities.length)
     expect(wrapper.findAll('.item-icon').every((icon) => icon.attributes('data-rarity') === 'unspecified')).toBe(true)
   })
 

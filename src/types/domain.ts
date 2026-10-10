@@ -6,6 +6,32 @@
  */
 
 export type ItemRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'special'
+export type VerificationStatus = 'candidate' | 'reviewed' | 'verified' | 'disputed' | 'stale'
+
+export interface MarkerSourceClaims {
+  validated?: boolean
+  randomSpawn?: boolean
+  difficulties?: string[]
+}
+
+export interface MarkerProvenance {
+  sourceName: string
+  sourceKey: string
+  sourceUrl: string
+  sourceExternalId: string
+  sourceRecordName?: string
+  sourceDescription?: string
+  coordinateSpace: string
+  sourceX: number
+  sourceY: number
+  sourceZ?: number
+  retrievedAt: string
+  sourceUpdatedAt?: string
+  snapshotEtag?: string
+  snapshotHash?: string
+  reuseStatus: 'unconfirmed' | 'permitted' | 'not-approved'
+  sourceClaims: MarkerSourceClaims
+}
 
 export interface MapEntity {
   id: string
@@ -15,8 +41,8 @@ export interface MapEntity {
   nameEn: string
   descriptionVi?: string
   descriptionEn?: string
-  icon?: string
-  rarity?: ItemRarity
+  catalogItemId?: string
+  verificationStatus?: VerificationStatus
 }
 
 export interface MapMarker {
@@ -26,5 +52,8 @@ export interface MapMarker {
   areaId?: string
   xNormalized: number
   yNormalized: number
+  withinLocalCrop?: boolean
   floorKey?: string
+  verificationStatus?: VerificationStatus
+  provenance?: MarkerProvenance
 }
