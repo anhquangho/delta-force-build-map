@@ -1,7 +1,6 @@
 import type { NormalizedMapCoordinates } from './coordinates'
 import type { DeltaForceMapsZeroDamCalibrationRecord } from '@/data/deltaForceMapsZeroDamCalibration'
-
-export const ZERO_DAM_SOURCE_PREVIEW_EXTENT = 4096
+import { zeroDamSourceToLocal, type SourceCoordinateResult } from './zero-dam-source-to-local'
 
 export interface CalibrationCorrespondence extends NormalizedMapCoordinates {
   sourceExternalId: string
@@ -11,13 +10,10 @@ export interface CalibrationCorrespondence extends NormalizedMapCoordinates {
   calibrationRole: 'fit' | 'holdout'
 }
 
-export function provisionalSourcePreviewCoordinates(
+export function sourceCoordinatesForCalibrationPreview(
   record: Pick<DeltaForceMapsZeroDamCalibrationRecord, 'sourceX' | 'sourceY'>,
-): NormalizedMapCoordinates {
-  return {
-    xNormalized: record.sourceX / ZERO_DAM_SOURCE_PREVIEW_EXTENT,
-    yNormalized: record.sourceY / ZERO_DAM_SOURCE_PREVIEW_EXTENT,
-  }
+): SourceCoordinateResult {
+  return zeroDamSourceToLocal(record.sourceX, record.sourceY)
 }
 
 export function createCalibrationCorrespondence(

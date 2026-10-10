@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mockDataset } from '@/data/mockDataset'
 import { searchEntities } from '../search-ranking'
+import { zeroDamSourceToLocal } from '../zero-dam-source-to-local'
 
 function resultSlugs(query: string): string[] {
   return searchEntities(mockDataset, query).map((r) => r.entity.slug)
@@ -81,6 +82,35 @@ describe('searchEntities', () => {
     expect(result.markerCount).toBe(3)
     expect(result.category.slug).toBe('server')
     expect(result.map.slug).toBe('zero-dam')
+  })
+
+  it('counts only in-crop markers while preserving local mock marker counts', () => {
+    const data = structuredClone(mockDataset)
+    const serverMarker = data.markers.find((marker) => marker.provenance?.sourceExternalId === '395')!
+    const outOfCropSourceX = 4000
+    const projection = zeroDamSourceToLocal(outOfCropSourceX, serverMarker.provenance!.sourceY)
+    serverMarker.provenance!.sourceX = outOfCropSourceX
+    serverMarker.xNormalized = projection.xNormalized
+    serverMarker.yNormalized = projection.yNormalized
+    serverMarker.withinLocalCrop = projection.withinLocalCrop
+
+    expect(searchEntities(data, 'server')[0].markerCount).toBe(2)
+    expect(searchEntities(mockDataset, 'safe')[0].markerCount).toBe(11)
+    expect(searchEntities(mockDataset, 'két sắt')[0].markerCount).toBe(11)
+    expect(searchEntities(mockDataset, 'computer case')[0].markerCount).toBe(9)
+    expect(searchEntities(mockDataset, 'keycard').map((result) => result.markerCount)).toEqual([1, 1])
+  })
+
+  it('keeps keycard room POIs distinct from inventory Keycard items', () => {
+    const roomResults = searchEntities(mockDataset, 'Substation Tech Room')
+    expect(roomResults.map((result) => result.entity.slug)).toEqual(['substation-tech-room'])
+    expect(roomResults[0].markerCount).toBe(1)
+    expect(roomResults[0].category.slug).toBe('keycard-location')
+    expect(searchEntities(mockDataset, 'Substation Tech Room Keycard').map((result) => result.entity.slug)).toEqual(['substation-tech-room-keycard'])
+    expect(new Set(searchEntities(mockDataset, 'keycard').map((result) => result.entity.slug))).toEqual(new Set([
+      'substation-tech-room-keycard',
+      'underground-vault-storage-keycard',
+    ]))
   })
 
   it('returns substring matches sorted by Vietnamese name when ranks tie', () => {

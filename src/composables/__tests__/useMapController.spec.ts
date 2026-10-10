@@ -6,6 +6,7 @@ import { mockDataset, serverMarkerCandidates } from '@/data/mockDataset'
 import { zeroDamMapConfig } from '@/data/zeroDamMap'
 import { isMapTileAvailable } from '@/lib/map-tiles'
 import { normalizedToLeafletSimplePoint } from '@/lib/coordinates'
+import { zeroDamSourceToLocal } from '@/lib/zero-dam-source-to-local'
 import { minimumZoomForMapFit, panBoundsForViewport } from '@/lib/map-tiles'
 
 let controller: MapController | undefined
@@ -61,6 +62,21 @@ describe('Leaflet adapter', () => {
     expect(markerFactory.mock.calls[0][0]).toEqual([markerPoint.lat, markerPoint.lng])
   })
 
+  it('does not project source candidates outside the local crop into Leaflet', () => {
+    const markerFactory = vi.spyOn(L, 'marker')
+    const map = setup()
+    const outOfCropMarker = {
+      ...serverMarkerCandidates[0],
+      xNormalized: 4000 / 3584,
+      withinLocalCrop: false,
+    }
+
+    map.setMarkers([outOfCropMarker], options)
+
+    expect(markerFactory).not.toHaveBeenCalled()
+    expect(container.querySelectorAll('.item-map-marker')).toHaveLength(0)
+  })
+
   it('uses the inspected local z/y/x 512px native tile configuration', () => {
     const tileFactory = vi.spyOn(L, 'tileLayer')
     setup()
@@ -78,15 +94,15 @@ describe('Leaflet adapter', () => {
     const markerFactory = vi.spyOn(L, 'marker')
     const map = setup()
     const candidate = serverMarkerCandidates[0]
-    const safe = mockDataset.markers.find((marker) => marker.entityId !== candidate.entityId)!
+    const localMock = mockDataset.markers.find((marker) => marker.verificationStatus === undefined)!
     const onMarkerDrag = vi.fn()
     map.setMarkers([candidate], options)
     expect((markerFactory.mock.results[0].value as L.Marker).options.draggable).toBe(false)
-    map.setMarkers([candidate, safe], { ...options, allowCandidateDragging: true, onMarkerDrag })
+    map.setMarkers([candidate, localMock], { ...options, allowCandidateDragging: true, onMarkerDrag })
     const candidatePin = markerFactory.mock.results[1].value as L.Marker
-    const safePin = markerFactory.mock.results[2].value as L.Marker
+    const localMockPin = markerFactory.mock.results[2].value as L.Marker
     expect(candidatePin.options.draggable).toBe(true)
-    expect(safePin.options.draggable).toBe(false)
+    expect(localMockPin.options.draggable).toBe(false)
     const target = normalizedToLeafletSimplePoint(0.61, 0.42, zeroDamMapConfig)
     candidatePin.setLatLng([target.lat, target.lng])
     candidatePin.fire('dragend')
@@ -106,9 +122,10 @@ describe('Leaflet adapter', () => {
     const original = { xNormalized: candidate.xNormalized, yNormalized: candidate.yNormalized }
     const onDrag = vi.fn()
     map.setMarkers([candidate], options)
+    const calibrationPosition = zeroDamSourceToLocal(2455, 1784)
     map.setDevelopmentCalibrationMarker({
-      xNormalized: 2455 / 4096,
-      yNormalized: 1784 / 4096,
+      xNormalized: calibrationPosition.xNormalized,
+      yNormalized: calibrationPosition.yNormalized,
       title: 'Calibration source 165',
       onDrag,
     })

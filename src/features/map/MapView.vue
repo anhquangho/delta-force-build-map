@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { CSSProperties } from 'vue'
-import { mockDataset } from '@/data/mockDataset'
+import { keycardLocationMarkerCandidates, mockDataset } from '@/data/mockDataset'
 import type { DeltaForceMapsZeroDamCalibrationRecord } from '@/data/deltaForceMapsZeroDamCalibration'
 import { zeroDamMapConfig } from '@/data/zeroDamMap'
 import { useMapController } from '@/composables/useMapController'
 import type { SearchSelection } from '@/composables/useSearchSelection'
 import type { MapMarker } from '@/types/domain'
 import { normalizedCoordinatesToMapPoint, type NormalizedMapCoordinates } from '@/lib/coordinates'
+import { isMarkerVisibleInLocalMap } from '@/lib/marker-visibility'
 import { createMarkerReviewPatch, markerPositionDelta, markerReviewModeEnabled } from '@/lib/marker-review'
-import { createCalibrationCorrespondence, provisionalSourcePreviewCoordinates } from '@/lib/marker-calibration'
+import { createCalibrationCorrespondence, sourceCoordinatesForCalibrationPreview } from '@/lib/marker-calibration'
 import { getCatalogItem, getItemPresentation } from '@/lib/item-presentation'
 import { placeMarkerDetail, type MarkerDetailPlacement } from '@/lib/marker-detail-placement'
 import MarkerDetail from './MarkerDetail.vue'
@@ -22,7 +23,10 @@ const inspectedCoordinates = ref<NormalizedMapCoordinates | null>(null)
 const reviewPositions = ref<Record<string, NormalizedMapCoordinates>>({})
 const reviewCopyStatus = ref('')
 const calibrationSourceExternalId = ref('')
+const keycardPoiSourceExternalId = ref('')
 const calibrationPosition = ref<NormalizedMapCoordinates | null>(null)
+const calibrationWithinLocalCrop = ref<boolean | null>(null)
+const calibrationHasManualReview = ref(false)
 const selectedMarker = ref<MapMarker | null>(null)
 const reviewMode = markerReviewModeEnabled(window.location.search, import.meta.env.DEV)
 const reviewPanelVisible = ref(true)
@@ -32,6 +36,13 @@ if (import.meta.env.DEV && reviewMode) {
     calibrationRecords.value = deltaForceMapsZeroDamCalibrationRecords
   })
 }
+const keycardPoiOptions = keycardLocationMarkerCandidates.flatMap((marker) => {
+  const provenance = marker.provenance
+  const entity = mockDataset.entities.find((entry) => entry.id === marker.entityId)
+  return provenance?.sourceKey === 'key_card' && entity
+    ? [{ marker, provenance, entity }]
+    : []
+})
 const showAlignmentControlPoints = import.meta.env.DEV
 const basemapStatus = ref<'loading' | 'ready' | 'error'>('loading')
 let controller: ReturnType<typeof useMapController> | null = null
@@ -44,7 +55,7 @@ const selectedEntity = computed(() =>
   mockDataset.entities.find((entity) => entity.id === props.selection.selectedEntityId),
 )
 const selectedMarkers = computed(() =>
-  mockDataset.markers.filter((marker) => marker.entityId === selectedEntity.value?.id),
+  mockDataset.markers.filter((marker) => marker.entityId === selectedEntity.value?.id && isMarkerVisibleInLocalMap(marker)),
 )
 const markersForMap = computed(() => selectedMarkers.value.map((marker) => {
   const coordinates = reviewPositions.value[marker.id]
@@ -58,6 +69,18 @@ const selectedReviewCandidate = computed(() => {
 const selectedCalibrationRecord = computed(() =>
   calibrationRecords.value.find((record) => record.sourceExternalId === calibrationSourceExternalId.value) ?? null,
 )
+const selectedKeycardPoiOption = computed(() =>
+  keycardPoiOptions.find((option) => option.provenance.sourceExternalId === keycardPoiSourceExternalId.value) ?? null,
+)
+const selectedKeycardPoiMarker = computed(() =>
+  selectedReviewCandidate.value?.provenance?.sourceKey === 'key_card' ? selectedReviewCandidate.value : null,
+)
+const keycardPoiFloorInterpretation = computed(() => {
+  const sourceZ = selectedKeycardPoiMarker.value?.provenance?.sourceZ
+  return sourceZ === undefined
+    ? 'Unknown; source z was not supplied.'
+    : `Unknown; source z=${sourceZ} is preserved as a code, but no named-floor mapping is validated.`
+})
 const currentReviewCoordinates = computed(() => {
   const marker = selectedReviewCandidate.value
   if (!marker) return null
@@ -131,6 +154,9 @@ function updateDetailPosition() {
 
 function openMarkerDetail(marker: MapMarker) {
   selectedMarker.value = marker
+  keycardPoiSourceExternalId.value = marker.provenance?.sourceKey === 'key_card'
+    ? marker.provenance.sourceExternalId
+    : ''
   if (reviewMode) inspectedCoordinates.value = { xNormalized: marker.xNormalized, yNormalized: marker.yNormalized }
   updateDetailPosition()
   void nextTick(updateDetailPosition)
@@ -148,23 +174,41 @@ function onMarkerDrag(marker: MapMarker, coordinates: NormalizedMapCoordinates) 
   updateDetailPosition()
 }
 
+function sourceFieldText(value?: string): string {
+  if (value === undefined) return 'Not supplied'
+  return value.length ? value : 'Empty in source'
+}
+
+function sourceValidationClaimText(value?: boolean): string {
+  return value === undefined ? 'Not supplied' : `${value} (source claim only)`
+}
+
 function selectCalibrationRecord(sourceExternalId: string) {
   calibrationSourceExternalId.value = sourceExternalId
   reviewCopyStatus.value = ''
+  calibrationHasManualReview.value = false
   closeDetail()
   const record = calibrationRecords.value.find((candidate) => candidate.sourceExternalId === sourceExternalId)
   if (!record) {
     calibrationPosition.value = null
+    calibrationWithinLocalCrop.value = null
     controller?.setDevelopmentCalibrationMarker(null)
     return
   }
-  const coordinates = provisionalSourcePreviewCoordinates(record)
-  calibrationPosition.value = coordinates
+  const projection = sourceCoordinatesForCalibrationPreview(record)
+  calibrationPosition.value = { xNormalized: projection.xNormalized, yNormalized: projection.yNormalized }
+  calibrationWithinLocalCrop.value = projection.withinLocalCrop
+  if (!projection.withinLocalCrop) {
+    controller?.setDevelopmentCalibrationMarker(null)
+    return
+  }
   controller?.setDevelopmentCalibrationMarker({
-    ...coordinates,
+    xNormalized: projection.xNormalized,
+    yNormalized: projection.yNormalized,
     title: `Calibration source ${record.sourceExternalId}: ${record.name ?? record.locationId}`,
     onDrag: (reviewedCoordinates) => {
       calibrationPosition.value = reviewedCoordinates
+      calibrationHasManualReview.value = true
       reviewCopyStatus.value = ''
     },
   })
@@ -172,6 +216,22 @@ function selectCalibrationRecord(sourceExternalId: string) {
 
 function onCalibrationRecordChange(event: Event) {
   selectCalibrationRecord((event.currentTarget as HTMLSelectElement).value)
+}
+
+async function onKeycardPoiSourceChange(event: Event) {
+  const sourceExternalId = (event.currentTarget as HTMLSelectElement).value
+  keycardPoiSourceExternalId.value = sourceExternalId
+  reviewCopyStatus.value = ''
+  const option = keycardPoiOptions.find((entry) => entry.provenance.sourceExternalId === sourceExternalId)
+  if (!option) {
+    closeDetail()
+    return
+  }
+  props.selection.selectEntity(option.marker.entityId)
+  await nextTick()
+  controller?.fitMarkers()
+  controller?.selectMarker(option.marker.id)
+  openMarkerDetail(option.marker)
 }
 
 function resetCalibrationRecordPosition() {
@@ -182,7 +242,9 @@ function resetCalibrationRecordPosition() {
 function copyCalibrationCorrespondence() {
   const record = selectedCalibrationRecord.value
   const coordinates = calibrationPosition.value
-  if (record && coordinates) void copyReviewText(createCalibrationCorrespondence(record, coordinates))
+  if (record && coordinates && calibrationWithinLocalCrop.value && calibrationHasManualReview.value) {
+    void copyReviewText(createCalibrationCorrespondence(record, coordinates))
+  }
 }
 
 async function copyReviewText(value: unknown) {
@@ -211,6 +273,35 @@ function copySelectedMarkerPatch() {
   const marker = selectedReviewCandidate.value
   const coordinates = currentReviewCoordinates.value
   if (marker && coordinates) void copyReviewText(createMarkerReviewPatch(marker.id, coordinates))
+}
+
+function copySelectedKeycardPoiDetails() {
+  const marker = selectedKeycardPoiMarker.value
+  const option = selectedKeycardPoiOption.value
+  const source = marker?.provenance
+  const currentCoordinates = currentReviewCoordinates.value
+  if (!marker || !option || option.marker.id !== marker.id || !source || !currentCoordinates) return
+  void copyReviewText({
+    sourceUrl: source.sourceUrl,
+    sourceKey: source.sourceKey,
+    sourceExternalId: source.sourceExternalId,
+    sourceRecordName: source.sourceRecordName ?? null,
+    sourceDescription: source.sourceDescription ?? null,
+    sourceX: source.sourceX,
+    sourceY: source.sourceY,
+    sourceZ: source.sourceZ ?? null,
+    sourceNormalizedX: marker.xNormalized,
+    sourceNormalizedY: marker.yNormalized,
+    currentNormalizedX: currentCoordinates.xNormalized,
+    currentNormalizedY: currentCoordinates.yNormalized,
+    withinLocalCrop: marker.withinLocalCrop,
+    sourceClaims: source.sourceClaims,
+    sourceFloorCode: source.sourceZ ?? null,
+    namedFloorMapping: 'unknown/unverified',
+    rarityEvidence: 'unknown/not supplied for this location POI',
+    colorEvidence: 'unknown/not supplied for this location POI',
+    verificationStatus: marker.verificationStatus,
+  })
 }
 
 function resetSelectedMarkerToSource() {
@@ -403,6 +494,27 @@ onUnmounted(() => {
           Copy coordinates
         </button>
       </section>
+      <section class="review-keycard-poi-tools">
+        <h3>Keycard-related POI audit</h3>
+        <label for="keycard-poi-source-select">Source ID / name</label>
+        <select
+          id="keycard-poi-source-select"
+          :value="keycardPoiSourceExternalId"
+          @change="onKeycardPoiSourceChange"
+        >
+          <option value="">
+            Select a keycard-related POI…
+          </option>
+          <option
+            v-for="option in keycardPoiOptions"
+            :key="option.marker.id"
+            :value="option.provenance.sourceExternalId"
+          >
+            {{ option.provenance.sourceExternalId }} · {{ sourceFieldText(option.provenance.sourceRecordName) }} · {{ option.entity.nameVi }}
+          </option>
+        </select>
+        <p>Focuses and highlights one map POI. This does not link it to an inventory Keycard item.</p>
+      </section>
       <section class="review-calibration-tools">
         <h3>Calibration correspondences</h3>
         <label for="calibration-source-select">Source record</label>
@@ -438,8 +550,15 @@ onUnmounted(() => {
             <dd>{{ selectedCalibrationRecord.approximateSourceRegion }} · {{ selectedCalibrationRecord.calibrationRole }} · {{ selectedCalibrationRecord.confidence }}</dd>
             <dt>Current normalized</dt>
             <dd>{{ calibrationPosition.xNormalized.toFixed(6) }} / {{ calibrationPosition.yNormalized.toFixed(6) }}</dd>
+            <dt>Within local crop</dt>
+            <dd>{{ calibrationWithinLocalCrop ? 'Yes' : 'No' }}</dd>
           </dl>
-          <p>Temporary pin starts at the uncalibrated 4096 preview only. Drag to the exact local feature; source data stays unchanged.</p>
+          <p v-if="calibrationWithinLocalCrop">
+            Temporary pin starts at the deterministic crop conversion only. Drag to the exact local feature; source data stays unchanged.
+          </p>
+          <p v-else>
+            Outside the local crop; no pin is rendered and coordinates are not clamped.
+          </p>
           <div class="review-actions">
             <button
               type="button"
@@ -449,6 +568,7 @@ onUnmounted(() => {
             </button>
             <button
               type="button"
+              :disabled="!calibrationWithinLocalCrop || !calibrationHasManualReview"
               @click="copyCalibrationCorrespondence"
             >
               Copy calibration correspondence
@@ -477,10 +597,28 @@ onUnmounted(() => {
           <dd>{{ selectedEntity?.nameVi }} / {{ selectedEntity?.nameEn }}</dd>
           <dt>Source external ID</dt>
           <dd>{{ selectedReviewCandidate.provenance?.sourceExternalId ?? 'Unknown' }}</dd>
+          <dt>Source category</dt>
+          <dd>{{ selectedReviewCandidate.provenance?.sourceKey ?? 'Unknown' }}</dd>
+          <dt>Original source name</dt>
+          <dd>{{ sourceFieldText(selectedReviewCandidate.provenance?.sourceRecordName) }}</dd>
+          <dt>Original source description</dt>
+          <dd>{{ sourceFieldText(selectedReviewCandidate.provenance?.sourceDescription) }}</dd>
+          <dt>Source validated claim</dt>
+          <dd>{{ sourceValidationClaimText(selectedReviewCandidate.provenance?.sourceClaims.validated) }}</dd>
           <dt>Original source X / Y / Z</dt>
           <dd>{{ selectedReviewCandidate.provenance?.sourceX ?? 'Unknown' }} / {{ selectedReviewCandidate.provenance?.sourceY ?? 'Unknown' }} / {{ selectedReviewCandidate.provenance?.sourceZ ?? 'Unknown' }}</dd>
           <dt>Original normalized</dt>
           <dd>{{ selectedReviewCandidate.xNormalized.toFixed(6) }} / {{ selectedReviewCandidate.yNormalized.toFixed(6) }}</dd>
+          <template v-if="selectedReviewCandidate.provenance?.sourceKey === 'key_card'">
+            <dt>Source floor code (z)</dt>
+            <dd>{{ selectedReviewCandidate.provenance.sourceZ ?? 'Not supplied' }}</dd>
+            <dt>Named floor interpretation</dt>
+            <dd>{{ keycardPoiFloorInterpretation }}</dd>
+            <dt>Rarity / color evidence</dt>
+            <dd>Unknown; not present in this marker record or assigned to the POI.</dd>
+            <dt>Visible in local crop</dt>
+            <dd>{{ selectedReviewCandidate.withinLocalCrop ? 'Yes' : 'No' }}</dd>
+          </template>
           <dt>Original project X / Y</dt>
           <dd>{{ originalSourceMapPoint?.x.toFixed(2) }} / {{ originalSourceMapPoint?.y.toFixed(2) }}</dd>
           <dt>Current normalized</dt>
@@ -504,6 +642,13 @@ onUnmounted(() => {
             @click="copySelectedMarkerPatch"
           >
             Copy JSON Patch
+          </button>
+          <button
+            v-if="selectedReviewCandidate.provenance?.sourceKey === 'key_card'"
+            type="button"
+            @click="copySelectedKeycardPoiDetails"
+          >
+            Copy source ID / coordinates
           </button>
         </div>
       </section>

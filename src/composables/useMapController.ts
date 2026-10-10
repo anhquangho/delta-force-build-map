@@ -8,6 +8,7 @@ import type { LocalTileMapConfig, SimpleMapBounds } from '@/types/map-config'
 import { clampNormalizedCoordinates, leafletSimplePointToNormalized, normalizedToLeafletSimplePoint, sourceWorldToLeafletSimplePoint, type NormalizedMapCoordinates } from '@/lib/coordinates'
 import { isMapTileAvailable, minimumZoomForMapFit, nearestCoveredTileViewCenter, panBoundsForViewport } from '@/lib/map-tiles'
 import { markerVerificationLabel } from '@/lib/marker-verification'
+import { isMarkerVisibleInLocalMap } from '@/lib/marker-visibility'
 
 function toLeafletBounds(bounds: SimpleMapBounds): L.LatLngBoundsExpression {
   return [[bounds.south, bounds.west], [bounds.north, bounds.east]]
@@ -228,6 +229,7 @@ export function useMapController(
     clearMarkers()
     currentOptions = renderOptions
     for (const marker of markers) {
+      if (!isMarkerVisibleInLocalMap(marker)) continue
       const point = normalizedToLeafletSimplePoint(marker.xNormalized, marker.yNormalized, mapConfig)
       const element = document.createElement('div')
       const label = `${renderOptions.entityNameVi} / ${renderOptions.entityNameEn} · ${marker.floorKey ?? '?'} · ${markerVerificationLabel(marker)}`

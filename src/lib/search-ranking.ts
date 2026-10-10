@@ -1,5 +1,6 @@
 import type { MapMetadata, PublicCategory, PublicDataset } from '@/types/dataset'
 import type { MapEntity } from '@/types/domain'
+import { isMarkerVisibleInLocalMap } from './marker-visibility'
 import { normalizeSearchInput } from './search-normalization'
 
 export interface SearchResult {
@@ -48,12 +49,20 @@ export function searchEntities(dataset: PublicDataset, rawQuery: string): Search
       continue
     }
 
-    const markerCount = dataset.markers.filter((marker) => marker.entityId === entity.id).length
+    const markerCount = dataset.markers.filter((marker) => marker.entityId === entity.id && isMarkerVisibleInLocalMap(marker)).length
 
     results.push({ entity, category, map: dataset.map, markerCount, rank })
   }
 
-  return results.sort((a, b) => {
+  const bestExactRank = results.reduce(
+    (best, result) => result.rank <= 2 ? Math.min(best, result.rank) : best,
+    Number.POSITIVE_INFINITY,
+  )
+  const rankedResults = bestExactRank === Number.POSITIVE_INFINITY
+    ? results
+    : results.filter((result) => result.rank === bestExactRank)
+
+  return rankedResults.sort((a, b) => {
     if (a.rank !== b.rank) {
       return a.rank - b.rank
     }

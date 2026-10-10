@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { createSearchSelection } from '@/composables/useSearchSelection'
-import { mockDataset } from '@/data/mockDataset'
+import { computerCaseMarkerCandidates, keycardLocationMarkerCandidates, mockDataset, safeMarkerCandidates } from '@/data/mockDataset'
 import { deltaForceMapsZeroDamCalibrationRecords } from '@/data/deltaForceMapsZeroDamCalibration'
 import { itemCatalog, ITEM_CATALOG_IDS } from '@/data/itemCatalog'
-import { provisionalSourcePreviewCoordinates } from '@/lib/marker-calibration'
+import { sourceCoordinatesForCalibrationPreview } from '@/lib/marker-calibration'
 import MapView from '../MapView.vue'
 import { getItemPresentation } from '@/lib/item-presentation'
 
@@ -17,7 +17,12 @@ const adapter = vi.hoisted(() => ({
   onMapCoordinateClick: vi.fn((_listener: (coordinates: { xNormalized: number; yNormalized: number }) => void) => vi.fn()),
   onViewportChange: vi.fn((_listener: () => void) => vi.fn()),
 }))
-vi.mock('@/composables/useMapController', () => ({ useMapController: vi.fn(() => adapter) }))
+vi.mock('@/composables/useMapController', () => ({
+  useMapController: vi.fn((_container: HTMLElement, options: { onBasemapStatus?: (status: 'ready' | 'error') => void }) => {
+    options.onBasemapStatus?.('ready')
+    return adapter
+  }),
+}))
 
 const observe = vi.fn()
 const disconnect = vi.fn()
@@ -53,16 +58,50 @@ function setup(search = '') {
   return { selection, wrapper }
 }
 
+function calibrationPreviewCoordinates(record: (typeof deltaForceMapsZeroDamCalibrationRecords)[number]) {
+  const { xNormalized, yNormalized } = sourceCoordinatesForCalibrationPreview(record)
+  return { xNormalized, yNormalized }
+}
+
 describe('map view lifecycle', () => {
   it('mounts a map container before selection with no markers', () => {
     const { wrapper } = setup()
     expect(wrapper.find('.map-container').exists()).toBe(true)
     expect(wrapper.find('.dev-marker-review-panel').exists()).toBe(false)
+    expect(wrapper.find('#keycard-poi-source-select').exists()).toBe(false)
     expect(wrapper.find('#calibration-source-select').exists()).toBe(false)
     expect(wrapper.find('.dev-marker-review-toggle').exists()).toBe(false)
     expect(adapter.clearMarkers).toHaveBeenCalled()
     expect(adapter.resetView).toHaveBeenCalledOnce()
     expect(adapter.setMarkers).not.toHaveBeenCalled()
+  })
+
+  it('omits out-of-crop source candidates from the visible marker layer and count', async () => {
+    const server = mockDataset.entities.find((entity) => entity.slug === 'server')!
+    const sourceMarker = mockDataset.markers.find((marker) => marker.provenance?.sourceExternalId === '395')!
+    const outOfCropMarker = {
+      ...sourceMarker,
+      id: '11111111-1111-4111-8111-111111111111',
+      xNormalized: 4000 / 3584,
+      withinLocalCrop: false,
+      provenance: { ...sourceMarker.provenance!, sourceExternalId: 'outside-crop-test', sourceX: 4000 },
+    }
+    mockDataset.markers.push(outOfCropMarker)
+    let wrapper: ReturnType<typeof setup>['wrapper'] | undefined
+    try {
+      const result = setup()
+      wrapper = result.wrapper
+      result.selection.selectEntity(server.id)
+      await nextTick()
+
+      expect(mockDataset.markers).toContain(outOfCropMarker)
+      expect(adapter.setMarkers.mock.lastCall?.[0]).toEqual(mockDataset.markers.filter((marker) => marker.entityId === server.id && marker.withinLocalCrop !== false))
+      expect(adapter.setMarkers.mock.lastCall?.[0]).toHaveLength(3)
+      expect(wrapper.get('.map-status').text()).toContain('3 vị trí / locations')
+    } finally {
+      wrapper?.unmount()
+      mockDataset.markers.splice(mockDataset.markers.indexOf(outOfCropMarker), 1)
+    }
   })
 
   it('filters and focuses markers when the initial selection changes', async () => {
@@ -76,6 +115,40 @@ describe('map view lifecycle', () => {
       expect(adapter.setMarkers.mock.lastCall?.[1]).toMatchObject(getItemPresentation(entity))
     }
     expect(adapter.fitMarkers).toHaveBeenCalledTimes(mockDataset.entities.length)
+  })
+
+  it('renders nine source-backed Computer Case candidates and opens their detail', async () => {
+    const { selection, wrapper } = setup()
+    const entity = mockDataset.entities.find((entry) => entry.slug === 'computer-case')!
+    selection.selectEntity(entity.id)
+    await nextTick()
+    const markers = mockDataset.markers.filter((marker) => marker.entityId === entity.id)
+    expect(markers).toEqual(computerCaseMarkerCandidates)
+    expect(adapter.setMarkers.mock.lastCall?.[0]).toHaveLength(9)
+    expect(wrapper.get('.map-status').text()).toContain('9 vị trí / locations')
+    adapter.setMarkers.mock.lastCall?.[1].onMarkerClick(markers[0])
+    await nextTick()
+    expect(wrapper.get('.marker-detail').text()).toContain('Computer Case')
+    expect(wrapper.get('.marker-detail').text()).toContain('Unverified source candidate')
+  })
+
+  it('keeps source key_card locations separate from inventory Keycard items', async () => {
+    const { selection, wrapper } = setup()
+    const location = mockDataset.entities.find((entry) => entry.slug === 'substation-tech-room')!
+    const item = mockDataset.entities.find((entry) => entry.slug === 'substation-tech-room-keycard')!
+    selection.selectEntity(location.id)
+    await nextTick()
+    const marker = keycardLocationMarkerCandidates.find((entry) => entry.provenance?.sourceExternalId === '165')!
+    expect(marker.entityId).toBe(location.id)
+    expect(marker.entityId).not.toBe(item.id)
+    expect(adapter.setMarkers.mock.lastCall?.[0]).toEqual([marker])
+    adapter.setMarkers.mock.lastCall?.[1].onMarkerClick(marker)
+    await nextTick()
+    const detail = wrapper.get('.marker-detail')
+    expect(detail.text()).toContain('Phòng kỹ thuật trạm biến áp')
+    expect(detail.text()).toContain('Substation Tech Room')
+    expect(detail.text()).toContain('Keycard-related location')
+    expect(detail.text()).toContain('Unverified source candidate')
   })
 
   it.each([
@@ -98,6 +171,9 @@ describe('map view lifecycle', () => {
     expect(detail.get('.detail-heading img').attributes('src')).toBe(icon)
     expect(detail.text()).toContain('Zero Dam')
     expect(detail.text()).toContain('Unknown')
+    expect(detail.text()).toContain('Unverified mock data')
+    expect(markers[0].provenance).toBeUndefined()
+    expect(markers[0].verificationStatus).toBeUndefined()
     expect(detail.find('.rarity-badge').exists()).toBe(false)
   })
 
@@ -249,15 +325,43 @@ describe('map view lifecycle', () => {
     expect(adapter.selectMarker).toHaveBeenLastCalledWith(null)
   })
 
-  it('keeps Safe markers identified as unverified mock fixtures', async () => {
+  it('renders the source Safe candidates and opens their existing detail', async () => {
     const { selection, wrapper } = setup()
     const entity = mockDataset.entities.find((entry) => entry.slug === 'safe')!
     selection.selectEntity(entity.id)
     await nextTick()
-    const marker = mockDataset.markers.find((entry) => entry.entityId === entity.id)!
+    const markers = mockDataset.markers.filter((entry) => entry.entityId === entity.id)
+    expect(markers).toEqual(safeMarkerCandidates)
+    expect(adapter.setMarkers.mock.lastCall?.[0]).toEqual(markers)
+    expect(adapter.setMarkers.mock.lastCall?.[0]).toHaveLength(11)
+    expect(wrapper.get('.map-status').text()).toContain('11 vị trí / locations')
+
+    const marker = markers[0]
+    expect(marker.verificationStatus).toBe('candidate')
+    expect(marker.provenance?.sourceExternalId).toBe('354')
     adapter.setMarkers.mock.lastCall?.[1].onMarkerClick(marker)
     await nextTick()
-    expect(wrapper.get('.marker-detail').text()).toContain('Unverified mock data')
+    expect(wrapper.get('.marker-detail').text()).toContain('Két sắt')
+    expect(wrapper.get('.marker-detail').text()).toContain('Safe')
+    expect(wrapper.get('.marker-detail').text()).toContain('11 vị trí / locations')
+    expect(wrapper.get('.marker-detail').text()).toContain('Unverified source candidate')
+  })
+
+  it('keeps Safe source candidates draggable only in review mode without mutating stored coordinates', async () => {
+    const { selection } = setup('?devReview=1')
+    const entity = mockDataset.entities.find((entry) => entry.slug === 'safe')!
+    selection.selectEntity(entity.id)
+    await nextTick()
+    const marker = safeMarkerCandidates[0]
+    const original = { xNormalized: marker.xNormalized, yNormalized: marker.yNormalized }
+    const renderOptions = adapter.setMarkers.mock.lastCall?.[1]
+
+    expect(renderOptions?.allowCandidateDragging).toBe(true)
+    expect(adapter.setMarkers.mock.lastCall?.[0]).toHaveLength(11)
+    renderOptions?.onMarkerDrag?.(marker, { xNormalized: 0.4, yNormalized: 0.5 })
+    expect(marker.xNormalized).toBe(original.xNormalized)
+    expect(marker.yNormalized).toBe(original.yNormalized)
+    expect(marker.verificationStatus).toBe('candidate')
   })
 
   it('inspects clicks and reviews a candidate without mutating the dataset', async () => {
@@ -276,13 +380,13 @@ describe('map view lifecycle', () => {
     await nextTick()
     expect(wrapper.get('.dev-marker-review-panel').text()).toContain('0.250000')
     expect(wrapper.get('.dev-marker-review-panel').text()).toContain('0.750000')
-    expect(wrapper.get('.dev-marker-review-panel').text()).toContain('1024.00 / 3072.00')
+    expect(wrapper.get('.dev-marker-review-panel').text()).toContain('896.00 / 1920.00')
     await wrapper.findAll('.dev-marker-review-panel button').find((button) => button.text() === 'Copy coordinates')!.trigger('click')
     expect(JSON.parse(writeText.mock.calls[0][0])).toEqual({
       xNormalized: 0.25,
       yNormalized: 0.75,
-      projectX: 1024,
-      projectY: 3072,
+      projectX: 896,
+      projectY: 1920,
     })
 
     const marker = mockDataset.markers.find((entry) => entry.verificationStatus === 'candidate')!
@@ -319,6 +423,61 @@ describe('map view lifecycle', () => {
     expect(wrapper.get('.dev-marker-review-panel').text()).toContain(`${original.xNormalized.toFixed(6)} / ${original.yNormalized.toFixed(6)}`)
   })
 
+  it('focuses and inspects a key_card POI in dev review without persisting data', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const { selection, wrapper } = setup('?devReview=1')
+    const selector = wrapper.get('#keycard-poi-source-select')
+    expect(selector.findAll('option')).toHaveLength(16)
+    expect(selector.text()).toContain('165 · Substation Tech Room')
+
+    await selector.setValue('165')
+    await flushPromises()
+    await nextTick()
+
+    const marker = keycardLocationMarkerCandidates.find((entry) => entry.provenance?.sourceExternalId === '165')!
+    const entity = mockDataset.entities.find((entry) => entry.slug === 'substation-tech-room')!
+    expect(selection.selectedEntityId).toBe(entity.id)
+    expect(adapter.setMarkers.mock.lastCall?.[0]).toEqual([marker])
+    expect(adapter.fitMarkers).toHaveBeenCalled()
+    expect(adapter.selectMarker).toHaveBeenCalledWith(marker.id)
+    expect(wrapper.get('.marker-detail').text()).toContain('Keycard-related location')
+
+    const inspector = wrapper.get('.review-marker-inspector')
+    expect(inspector.text()).toContain('Substation Tech Room')
+    expect(inspector.text()).toContain('normal: 1x Big safe, 2x Server')
+    expect(inspector.text()).toContain('2455 / 1784 / 1')
+    expect(inspector.text()).toContain('0.684989 / 0.703125')
+    expect(inspector.text()).toContain('Source floor code (z)')
+    expect(inspector.text()).toContain('Unknown; source z=1')
+    expect(inspector.text()).toContain('Rarity / color evidence')
+    expect(inspector.text()).toContain('candidate')
+
+    await wrapper.findAll('.review-marker-inspector button').find((button) => button.text() === 'Copy source ID / coordinates')!.trigger('click')
+    await flushPromises()
+    expect(JSON.parse(writeText.mock.calls[0][0])).toMatchObject({
+      sourceKey: 'key_card',
+      sourceExternalId: '165',
+      sourceRecordName: 'Substation Tech Room',
+      sourceDescription: 'normal: 1x Big safe, 2x Server',
+      sourceX: 2455,
+      sourceY: 1784,
+      sourceZ: 1,
+      sourceNormalizedX: marker.xNormalized,
+      sourceNormalizedY: marker.yNormalized,
+      namedFloorMapping: 'unknown/unverified',
+      verificationStatus: 'candidate',
+    })
+    expect(marker.verificationStatus).toBe('candidate')
+
+    await selector.setValue('225')
+    await flushPromises()
+    await nextTick()
+    expect(wrapper.get('.review-marker-inspector').text()).toContain('Source floor code (z)')
+    expect(wrapper.get('.review-marker-inspector').text()).toContain('Not supplied')
+    expect(wrapper.get('.review-marker-inspector').text()).toContain('Unknown; source z was not supplied')
+  })
+
   it('reviews temporary source calibration points without mutating dataset markers', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
@@ -332,7 +491,7 @@ describe('map view lifecycle', () => {
     await nextTick()
     expect(wrapper.get('.review-calibration-tools').text()).toContain('Substation Tech Room')
     expect(adapter.setDevelopmentCalibrationMarker).toHaveBeenLastCalledWith(expect.objectContaining({
-      ...provisionalSourcePreviewCoordinates(record),
+      ...calibrationPreviewCoordinates(record),
       title: expect.stringContaining('165'),
       onDrag: expect.any(Function),
     }))
@@ -341,7 +500,7 @@ describe('map view lifecycle', () => {
     expect(wrapper.find('.dev-marker-review-panel').exists()).toBe(false)
     expect(wrapper.find('.dev-marker-review-toggle').exists()).toBe(true)
     expect(adapter.setDevelopmentCalibrationMarker).toHaveBeenLastCalledWith(expect.objectContaining({
-      ...provisionalSourcePreviewCoordinates(record),
+      ...calibrationPreviewCoordinates(record),
       onDrag: expect.any(Function),
     }))
     adapter.setDevelopmentCalibrationMarker.mock.lastCall?.[0].onDrag({ xNormalized: 0.6123, yNormalized: 0.3341 })
@@ -363,7 +522,7 @@ describe('map view lifecycle', () => {
     expect(server.verificationStatus).toBe('candidate')
 
     await wrapper.findAll('.review-calibration-tools button').find((button) => button.text() === 'Reset to source preview')!.trigger('click')
-    expect(adapter.setDevelopmentCalibrationMarker).toHaveBeenLastCalledWith(expect.objectContaining(provisionalSourcePreviewCoordinates(record)))
+    expect(adapter.setDevelopmentCalibrationMarker).toHaveBeenLastCalledWith(expect.objectContaining(calibrationPreviewCoordinates(record)))
     await wrapper.findAll('.review-calibration-tools button').find((button) => button.text() === 'Clear calibration point')!.trigger('click')
     expect(adapter.setDevelopmentCalibrationMarker).toHaveBeenLastCalledWith(null)
   })

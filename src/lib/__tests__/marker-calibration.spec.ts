@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { deltaForceMapsZeroDamCalibrationRecords } from '@/data/deltaForceMapsZeroDamCalibration'
-import { createCalibrationCorrespondence, provisionalSourcePreviewCoordinates } from '../marker-calibration'
+import { createCalibrationCorrespondence, sourceCoordinatesForCalibrationPreview } from '../marker-calibration'
 
 describe('development source calibration correspondence', () => {
-  it('creates a clearly provisional preview position while keeping raw source coordinates', () => {
+  it('uses the crop conversion for the review preview while keeping raw source coordinates', () => {
     const record = deltaForceMapsZeroDamCalibrationRecords.find((candidate) => candidate.sourceExternalId === '165')!
     const original = structuredClone(record)
 
-    expect(provisionalSourcePreviewCoordinates(record)).toEqual({
-      xNormalized: 2455 / 4096,
-      yNormalized: 1784 / 4096,
+    expect(sourceCoordinatesForCalibrationPreview(record)).toEqual({
+      xNormalized: 2455 / 3584,
+      yNormalized: 1800 / 2560,
+      withinLocalCrop: true,
     })
     expect(record).toEqual(original)
   })
