@@ -19,6 +19,8 @@ export interface MarkerProvenance {
   sourceKey: string
   sourceUrl: string
   sourceExternalId: string
+  sourceRecordName?: string
+  sourceDescription?: string
   coordinateSpace: string
   sourceX: number
   sourceY: number
@@ -40,6 +42,7 @@ export interface MapEntity {
   descriptionVi?: string
   descriptionEn?: string
   catalogItemId?: string
+  verificationStatus?: VerificationStatus
 }
 
 export interface MapMarker {
@@ -49,6 +52,7 @@ export interface MapMarker {
   areaId?: string
   xNormalized: number
   yNormalized: number
+  withinLocalCrop?: boolean
   floorKey?: string
   verificationStatus?: VerificationStatus
   provenance?: MarkerProvenance

@@ -6,6 +6,7 @@ import { mockDataset, serverMarkerCandidates } from '@/data/mockDataset'
 import { zeroDamMapConfig } from '@/data/zeroDamMap'
 import { isMapTileAvailable } from '@/lib/map-tiles'
 import { normalizedToLeafletSimplePoint } from '@/lib/coordinates'
+import { zeroDamSourceToLocal } from '@/lib/zero-dam-source-to-local'
 import { minimumZoomForMapFit, panBoundsForViewport } from '@/lib/map-tiles'
 
 let controller: MapController | undefined
@@ -61,6 +62,21 @@ describe('Leaflet adapter', () => {
     expect(markerFactory.mock.calls[0][0]).toEqual([markerPoint.lat, markerPoint.lng])
   })
 
+  it('does not project source candidates outside the local crop into Leaflet', () => {
+    const markerFactory = vi.spyOn(L, 'marker')
+    const map = setup()
+    const outOfCropMarker = {
+      ...serverMarkerCandidates[0],
+      xNormalized: 4000 / 3584,
+      withinLocalCrop: false,
+    }
+
+    map.setMarkers([outOfCropMarker], options)
+
+    expect(markerFactory).not.toHaveBeenCalled()
+    expect(container.querySelectorAll('.item-map-marker')).toHaveLength(0)
+  })
+
   it('uses the inspected local z/y/x 512px native tile configuration', () => {
     const tileFactory = vi.spyOn(L, 'tileLayer')
     setup()
@@ -78,15 +94,15 @@ describe('Leaflet adapter', () => {
     const markerFactory = vi.spyOn(L, 'marker')
     const map = setup()
     const candidate = serverMarkerCandidates[0]
-    const safe = mockDataset.markers.find((marker) => marker.entityId !== candidate.entityId)!
+    const localMock = mockDataset.markers.find((marker) => marker.verificationStatus === undefined)!
     const onMarkerDrag = vi.fn()
     map.setMarkers([candidate], options)
     expect((markerFactory.mock.results[0].value as L.Marker).options.draggable).toBe(false)
-    map.setMarkers([candidate, safe], { ...options, allowCandidateDragging: true, onMarkerDrag })
+    map.setMarkers([candidate, localMock], { ...options, allowCandidateDragging: true, onMarkerDrag })
     const candidatePin = markerFactory.mock.results[1].value as L.Marker
-    const safePin = markerFactory.mock.results[2].value as L.Marker
+    const localMockPin = markerFactory.mock.results[2].value as L.Marker
     expect(candidatePin.options.draggable).toBe(true)
-    expect(safePin.options.draggable).toBe(false)
+    expect(localMockPin.options.draggable).toBe(false)
     const target = normalizedToLeafletSimplePoint(0.61, 0.42, zeroDamMapConfig)
     candidatePin.setLatLng([target.lat, target.lng])
     candidatePin.fire('dragend')
@@ -96,6 +112,41 @@ describe('Leaflet adapter', () => {
     expect(coordinates.yNormalized).toBeCloseTo(0.42)
     map.setMarkerPosition(candidate.id, { xNormalized: candidate.xNormalized, yNormalized: candidate.yNormalized })
     expect(candidatePin.getLatLng().lat).toBeCloseTo(normalizedToLeafletSimplePoint(candidate.xNormalized, candidate.yNormalized, zeroDamMapConfig).lat)
+  })
+
+  it('keeps the draggable temporary calibration pin separate from project marker data', () => {
+    const mapFactory = vi.spyOn(L, 'map')
+    const markerFactory = vi.spyOn(L, 'marker')
+    const map = setup()
+    const candidate = serverMarkerCandidates[0]
+    const original = { xNormalized: candidate.xNormalized, yNormalized: candidate.yNormalized }
+    const onDrag = vi.fn()
+    map.setMarkers([candidate], options)
+    const calibrationPosition = zeroDamSourceToLocal(2455, 1784)
+    map.setDevelopmentCalibrationMarker({
+      xNormalized: calibrationPosition.xNormalized,
+      yNormalized: calibrationPosition.yNormalized,
+      title: 'Calibration source 165',
+      onDrag,
+    })
+
+    expect(container.querySelectorAll('.item-map-marker')).toHaveLength(1)
+    expect(container.querySelectorAll('.development-calibration-marker')).toHaveLength(1)
+    const calibrationPin = markerFactory.mock.results[markerFactory.mock.results.length - 1].value as L.Marker
+    expect(calibrationPin.options.draggable).toBe(true)
+    expect(calibrationPin.options.pane).toBe('development-calibration-markers')
+    const leafletMap = mapFactory.mock.results[0].value as L.Map
+    expect(leafletMap.getPane('development-calibration-markers')?.style.zIndex).toBe('700')
+    const target = normalizedToLeafletSimplePoint(0.6123, 0.3341, zeroDamMapConfig)
+    calibrationPin.setLatLng([target.lat, target.lng])
+    calibrationPin.fire('dragend')
+    expect(onDrag).toHaveBeenCalledWith({ xNormalized: expect.closeTo(0.6123), yNormalized: expect.closeTo(0.3341) })
+    expect(candidate.xNormalized).toBe(original.xNormalized)
+    expect(candidate.yNormalized).toBe(original.yNormalized)
+
+    map.setDevelopmentCalibrationMarker(null)
+    expect(container.querySelectorAll('.development-calibration-marker')).toHaveLength(0)
+    expect(container.querySelectorAll('.item-map-marker')).toHaveLength(1)
   })
 
   it('projects map clicks through the centralized inverse coordinate transform', () => {

@@ -117,7 +117,10 @@ describe('map/sidebar shell', () => {
     const wrapper = setup()
     expect(wrapper.findAll('#map-select option')).toHaveLength(1)
     expect(wrapper.get('#difficulty-select').attributes('disabled')).toBeDefined()
-    expect(wrapper.findAll('.category-button')).toHaveLength(mockDataset.entities.length)
+    const categoryShortcutEntities = mockDataset.entities.filter((entity) =>
+      mockDataset.categories.some((category) => category.id === entity.categoryId && category.parentId),
+    )
+    expect(wrapper.findAll('.category-button')).toHaveLength(categoryShortcutEntities.length)
     expect(wrapper.findAll('.item-icon').every((icon) => icon.attributes('data-rarity') === 'unspecified')).toBe(true)
   })
 

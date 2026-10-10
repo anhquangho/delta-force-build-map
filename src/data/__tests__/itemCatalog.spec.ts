@@ -26,8 +26,8 @@ describe('item catalog', () => {
     expect(itemCatalog.every((item) => item.provenance.sourceRarityLabel == null)).toBe(true)
   })
 
-  it('links all five sample entities to matching catalog records', () => {
-    expect(mockDataset.entities.map((entity) => entity.catalogItemId)).toEqual([
+  it('links the five catalog-backed item entities to matching catalog records', () => {
+    expect(mockDataset.entities.filter((entity) => entity.catalogItemId).map((entity) => entity.catalogItemId)).toEqual([
       ITEM_CATALOG_IDS.safe,
       ITEM_CATALOG_IDS.server,
       ITEM_CATALOG_IDS.computerCase,

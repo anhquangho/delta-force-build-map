@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mockDataset, serverMarkerCandidates } from '../mockDataset'
 import { zeroDamMapConfig } from '../zeroDamMap'
 import { normalizedToLeafletSimplePoint } from '@/lib/coordinates'
+import { zeroDamSourceToLocal } from '@/lib/zero-dam-source-to-local'
 
 const serverEntity = mockDataset.entities.find((entity) => entity.slug === 'server')!
 
@@ -12,20 +13,35 @@ describe('source-backed Server marker candidates', () => {
     expect(mockDataset.markers.filter((marker) => marker.entityId === serverEntity.id)).toEqual(serverMarkerCandidates)
   })
 
-  it('keeps project coordinates normalized from the source 4096 image-space coordinates', () => {
+  it('converts source coordinates into the local crop before Leaflet projection', () => {
     for (const marker of serverMarkerCandidates) {
       const provenance = marker.provenance!
-      expect(marker.xNormalized).toBe(provenance.sourceX / 4096)
-      expect(marker.yNormalized).toBe(provenance.sourceY / 4096)
-      expect(marker.xNormalized).toBeGreaterThanOrEqual(0)
-      expect(marker.xNormalized).toBeLessThanOrEqual(1)
-      expect(marker.yNormalized).toBeGreaterThanOrEqual(0)
-      expect(marker.yNormalized).toBeLessThanOrEqual(1)
+      const expected = zeroDamSourceToLocal(provenance.sourceX, provenance.sourceY)
+      expect(marker.xNormalized).toBe(expected.xNormalized)
+      expect(marker.yNormalized).toBe(expected.yNormalized)
+      expect(marker.withinLocalCrop).toBe(expected.withinLocalCrop)
+      expect(expected.withinLocalCrop).toBe(true)
 
       const projected = normalizedToLeafletSimplePoint(marker.xNormalized, marker.yNormalized, zeroDamMapConfig)
       expect(projected.lng).toBeCloseTo(zeroDamMapConfig.contentBounds.west + marker.xNormalized * zeroDamMapConfig.coordinateWidth)
       expect(projected.lat).toBeCloseTo(zeroDamMapConfig.contentBounds.north - marker.yNormalized * zeroDamMapConfig.coordinateHeight)
     }
+  })
+
+  it('produces deterministic normalized positions from each preserved source coordinate', () => {
+    expect(serverMarkerCandidates.map((marker) => ({
+      sourceExternalId: marker.provenance?.sourceExternalId,
+      sourceX: marker.provenance?.sourceX,
+      sourceY: marker.provenance?.sourceY,
+      sourceZ: marker.provenance?.sourceZ,
+      xNormalized: marker.xNormalized,
+      yNormalized: marker.yNormalized,
+      withinLocalCrop: marker.withinLocalCrop,
+    }))).toEqual([
+      { sourceExternalId: '395', sourceX: 2428, sourceY: 1812, sourceZ: 1, xNormalized: 2428 / 3584, yNormalized: 1772 / 2560, withinLocalCrop: true },
+      { sourceExternalId: '333', sourceX: 2197, sourceY: 2735, sourceZ: undefined, xNormalized: 2197 / 3584, yNormalized: 849 / 2560, withinLocalCrop: true },
+      { sourceExternalId: '413', sourceX: 2298, sourceY: 2655, sourceZ: 0, xNormalized: 2298 / 3584, yNormalized: 929 / 2560, withinLocalCrop: true },
+    ])
   })
 
   it('uses project marker UUIDs and the project Server entity/map version', () => {

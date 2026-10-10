@@ -57,18 +57,27 @@ export function validateDataset(dataset: PublicDataset): DatasetValidationError[
       }
     }
 
-    if (
-      !Number.isFinite(marker.xNormalized) ||
-      !Number.isFinite(marker.yNormalized) ||
-      marker.xNormalized < 0 ||
-      marker.xNormalized > 1 ||
-      marker.yNormalized < 0 ||
-      marker.yNormalized > 1
-    ) {
-      errors.push({
-        type: 'marker',
-        message: `Marker ${marker.id} coordinates out of 0..1 range`,
-      })
+    const coordinatesAreFinite = Number.isFinite(marker.xNormalized) && Number.isFinite(marker.yNormalized)
+    const coordinatesAreWithinCrop =
+      marker.xNormalized >= 0 && marker.xNormalized <= 1 && marker.yNormalized >= 0 && marker.yNormalized <= 1
+    const hasTraceableOutOfCropSource =
+      marker.withinLocalCrop === false &&
+      marker.verificationStatus === 'candidate' &&
+      marker.provenance?.coordinateSpace === 'zero-dam-image-4096' &&
+      Number.isFinite(marker.provenance.sourceX) &&
+      Number.isFinite(marker.provenance.sourceY)
+
+    if (!coordinatesAreFinite || (!coordinatesAreWithinCrop && !hasTraceableOutOfCropSource)) {
+      errors.push({ type: 'marker', message: `Marker ${marker.id} coordinates out of 0..1 range` })
+    }
+    if (marker.withinLocalCrop === false && (!hasTraceableOutOfCropSource || coordinatesAreWithinCrop)) {
+      errors.push({ type: 'marker', message: `Marker ${marker.id} has inconsistent local-crop classification` })
+    }
+    if (marker.withinLocalCrop === true && !coordinatesAreWithinCrop) {
+      errors.push({ type: 'marker', message: `Marker ${marker.id} is marked within the local crop but has out-of-range coordinates` })
+    }
+    if (marker.provenance?.coordinateSpace === 'zero-dam-image-4096' && marker.withinLocalCrop === undefined) {
+      errors.push({ type: 'marker', message: `Source marker ${marker.id} is missing local-crop classification` })
     }
   }
 

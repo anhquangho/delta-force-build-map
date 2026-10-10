@@ -8,6 +8,7 @@ import type { LocalTileMapConfig, SimpleMapBounds } from '@/types/map-config'
 import { clampNormalizedCoordinates, leafletSimplePointToNormalized, normalizedToLeafletSimplePoint, sourceWorldToLeafletSimplePoint, type NormalizedMapCoordinates } from '@/lib/coordinates'
 import { isMapTileAvailable, minimumZoomForMapFit, nearestCoveredTileViewCenter, panBoundsForViewport } from '@/lib/map-tiles'
 import { markerVerificationLabel } from '@/lib/marker-verification'
+import { isMarkerVisibleInLocalMap } from '@/lib/marker-visibility'
 
 function toLeafletBounds(bounds: SimpleMapBounds): L.LatLngBoundsExpression {
   return [[bounds.south, bounds.west], [bounds.north, bounds.east]]
@@ -34,8 +35,14 @@ export interface MapMarkerRenderOptions extends ItemPresentation {
   onMarkerDrag?(marker: MapMarker, coordinates: NormalizedMapCoordinates): void
 }
 
+export interface DevelopmentCalibrationMarkerOptions extends NormalizedMapCoordinates {
+  title: string
+  onDrag(coordinates: NormalizedMapCoordinates): void
+}
+
 export interface MapController {
   setMarkers(markers: MapMarker[], options: MapMarkerRenderOptions): void
+  setDevelopmentCalibrationMarker(marker: DevelopmentCalibrationMarkerOptions | null): void
   setMarkerPosition(markerId: string, coordinates: NormalizedMapCoordinates): void
   clearMarkers(): void
   fitMarkers(): void
@@ -193,6 +200,9 @@ export function useMapController(
   const markerLayer = L.featureGroup().addTo(map)
   const entries = new Map<string, { element: HTMLElement; marker: L.Marker }>()
   let currentOptions: MapMarkerRenderOptions | null = null
+  let calibrationLayer: L.LayerGroup | null = null
+  let calibrationMarker: L.Marker | null = null
+  let calibrationPane: HTMLElement | null = null
 
   function clearMarkers() {
     for (const entry of entries.values()) render(null, entry.element)
@@ -219,6 +229,7 @@ export function useMapController(
     clearMarkers()
     currentOptions = renderOptions
     for (const marker of markers) {
+      if (!isMarkerVisibleInLocalMap(marker)) continue
       const point = normalizedToLeafletSimplePoint(marker.xNormalized, marker.yNormalized, mapConfig)
       const element = document.createElement('div')
       const label = `${renderOptions.entityNameVi} / ${renderOptions.entityNameEn} · ${marker.floorKey ?? '?'} · ${markerVerificationLabel(marker)}`
@@ -253,6 +264,37 @@ export function useMapController(
       entries.set(marker.id, { element, marker: pin })
     }
     selectMarker(null)
+  }
+
+  function setDevelopmentCalibrationMarker(marker: DevelopmentCalibrationMarkerOptions | null) {
+    if (calibrationMarker) calibrationLayer?.removeLayer(calibrationMarker)
+    calibrationMarker = null
+    if (!marker) return
+
+    calibrationPane ??= map.createPane('development-calibration-markers')
+    calibrationPane.style.zIndex = '700'
+    calibrationLayer ??= L.layerGroup().addTo(map)
+    const content = document.createElement('span')
+    content.className = 'development-calibration-marker'
+    content.textContent = 'CAL'
+    const position = normalizedToLeafletSimplePoint(marker.xNormalized, marker.yNormalized, mapConfig)
+    calibrationMarker = L.marker([position.lat, position.lng], {
+      pane: 'development-calibration-markers',
+      draggable: true,
+      icon: L.divIcon({ html: content, className: 'development-calibration-marker-icon', iconSize: [40, 40], iconAnchor: [20, 20] }),
+      title: marker.title,
+      alt: marker.title,
+      keyboard: true,
+      bubblingMouseEvents: false,
+      zIndexOffset: 1500,
+    }).addTo(calibrationLayer)
+    calibrationMarker.on('dragend', () => {
+      if (!calibrationMarker) return
+      const coordinates = clampNormalizedCoordinates(leafletSimplePointToNormalized(calibrationMarker.getLatLng(), mapConfig))
+      const correctedPosition = normalizedToLeafletSimplePoint(coordinates.xNormalized, coordinates.yNormalized, mapConfig)
+      calibrationMarker.setLatLng([correctedPosition.lat, correctedPosition.lng])
+      marker.onDrag(coordinates)
+    })
   }
 
   function setMarkerPosition(markerId: string, coordinates: NormalizedMapCoordinates) {
@@ -303,8 +345,11 @@ export function useMapController(
 
   function destroy() {
     clearMarkers()
+    setDevelopmentCalibrationMarker(null)
+    if (calibrationLayer) map.removeLayer(calibrationLayer)
+    calibrationLayer = null
     map.remove()
   }
 
-  return { setMarkers, setMarkerPosition, clearMarkers, fitMarkers, resetView, selectMarker, getMarkerPoint, onMapClick, onMapCoordinateClick, onViewportChange, resize, destroy }
+  return { setMarkers, setDevelopmentCalibrationMarker, setMarkerPosition, clearMarkers, fitMarkers, resetView, selectMarker, getMarkerPoint, onMapClick, onMapCoordinateClick, onViewportChange, resize, destroy }
 }
